@@ -47,6 +47,7 @@ pub struct VersionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct StatResponse {
     pub download_speed: String,
+    pub upload_speed: String,
     pub num_active: String,
     pub num_waiting: String,
     pub num_stopped: String,
@@ -57,6 +58,8 @@ impl From<crate::aria2::types::Aria2GlobalStat> for StatResponse {
     fn from(stat: crate::aria2::types::Aria2GlobalStat) -> Self {
         Self {
             download_speed: stat.download_speed,
+            // The extension contract requires this field; supported downloads do not upload.
+            upload_speed: "0".to_string(),
             num_active: stat.num_active,
             num_waiting: stat.num_waiting,
             num_stopped: stat.num_stopped,
@@ -795,6 +798,40 @@ mod tests {
 
     use super::*;
     use axum::http::HeaderValue;
+
+    #[test]
+    fn extension_statistics_preserve_the_wire_contract_without_p2p() {
+        let engine_stat = serde_json::json!({
+            "downloadSpeed": "1048576",
+            "numActive": "2",
+            "numWaiting": "3",
+            "numStopped": "4",
+            "numStoppedTotal": "5",
+        });
+        let stat: crate::aria2::types::Aria2GlobalStat =
+            serde_json::from_value(engine_stat).expect("engine statistics");
+        let response = StatResponse::from(stat);
+        let expected = serde_json::json!({
+            "downloadSpeed": "1048576",
+            "uploadSpeed": "0",
+            "numActive": "2",
+            "numWaiting": "3",
+            "numStopped": "4",
+            "numStoppedTotal": "5",
+        });
+        assert_eq!(
+            serde_json::to_value(&response).expect("/stat JSON"),
+            expected
+        );
+        let tasks = TasksResponse {
+            stat: response,
+            tasks: Vec::new(),
+        };
+        assert_eq!(
+            serde_json::to_value(tasks).expect("/tasks JSON"),
+            serde_json::json!({ "stat": expected, "tasks": [] }),
+        );
+    }
 
     #[tokio::test]
     async fn product_boundary_rejects_unrelated_browser_origins_and_missing_identity() {

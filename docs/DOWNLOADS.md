@@ -130,6 +130,10 @@ ones with the global statistics; `POST /tasks/{gid}/pause` and `…/resume` cont
 one task, and `…/reveal` shows its file, or its folder, on the desktop. These serve
 the extension popup.
 
+`GET /stat` and the `stat` object in `GET /tasks` retain the extension's
+string-valued counters, including `uploadSpeed: "0"`. Supported downloads do not
+upload; the field remains part of the connection and popup response contract.
+
 ## Native storage and recovery
 
 `database/` is the single connection owner for `history.db`: history, birth records,
