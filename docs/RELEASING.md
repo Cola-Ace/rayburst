@@ -8,20 +8,9 @@ website, change Git remotes or submit a signing request during development.
 Install new versions from GitHub Releases. The desktop has no update check,
 download or installation service.
 
-Keep the existing `TAURI_SIGNING_PRIVATE_KEY` and
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. The matching public key
-is in `src-tauri/tauri.conf.json`; `src-tauri/tauri.release.json` enables signed
-updater artifacts for release builds. There is no second key or public-key variable.
-
-Update manifests stay under the existing `updater` release tag:
-
-- Stable: `https://github.com/AnInsomniacy/rayburst/releases/download/updater/latest.json`
-- Prerelease: `https://github.com/AnInsomniacy/rayburst/releases/download/updater/beta.json`
-
-Previous releases reach these files through GitHub's repository redirect and verify
-updates with the same key. Keep the release tag; replace only the channel JSON after
-all referenced packages and signatures exist. Missing assets or signatures stop
-publication. The website continues to select the latest stable release only.
+Fork releases are published at `https://github.com/Cola-Ace/rayburst/releases`.
+The release workflow uses `tauri.conf.json`, where updater artifacts are disabled.
+It publishes one Windows x64 NSIS installer and requires no signing secrets.
 
 The new application identifier uses separate settings, task state and history.
 There is no data import or installer migration layer. Native installation may
@@ -61,7 +50,7 @@ or Native Messaging hosts. Start Rayburst manually before connecting the extensi
 Native Messaging permissions remain activation-only for externally configured hosts.
 
 Before release, verify that installation and startup preserve existing defaults and
-browser host registrations on Windows, macOS and Linux. Check extension handoff after
+browser host registrations on Windows x64. Check extension handoff after
 manually starting the desktop, read-only association queries and uninstall ownership.
 
 ## Platform distribution
@@ -70,32 +59,22 @@ Windows installers do not advertise Default Apps capabilities.
 Installer maintenance removes owned or orphaned historical candidates; it never
 rewrites protected UserChoice values or removes another live installation.
 
-macOS packages use macOS 26 runners with Xcode 26.3 for both architectures.
-Keep the build host aligned with the Icon Composer asset runtime; compiling on
-macOS 15 can crash AssetCatalogAgent even after the application compiles successfully.
+The Release workflow builds only `x86_64-pc-windows-msvc` with `--bundles nsis`.
+Publishing a GitHub Release uploads `Rayburst_<version>_x64-setup.exe` to that
+release. A manual workflow run stores the same installer as an Actions artifact.
+Fork installers are unsigned. The fork does not publish updater manifests,
+updater signatures or Homebrew packages.
 
-Homebrew publication requires `HOMEBREW_ENABLED=true` and `HOMEBREW_TAP_TOKEN`
-with write access to `AnInsomniacy/homebrew-rayburst`. The tap owns `Casks/rayburst.rb`;
-the stable release job clones the tap with git and runs `.github/scripts/update-homebrew-cask.sh`
-to update the version and both architecture checksums without replacing its installation or
-cleanup rules. It does not load the tap through Homebrew, so tap trust policy cannot block it. Windows signing requires `SIGNPATH_ENABLED=true` and the existing
-`SIGNPATH_API_TOKEN`, `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG` and
-`SIGNPATH_RELEASE_ARTIFACT_CONFIGURATION_SLUG` settings. Match the artifact
-configuration to the new installer names in the signing service.
-
-When SignPath is enabled, the release build leaves the update channel unchanged.
-Run the existing Windows signing workflow to sign the installers, regenerate their
-updater signatures and publish the complete channel JSON. Without SignPath, the
-release build publishes the channel JSON after all platform builds finish.
-Community package entries are not assumed to exist. Keep installation instructions
-limited to packages that have been published.
-
-Use `scripts/bump-version.sh` for a chosen release version. Creating a release,
-submitting to stores and platform acceptance are separate actions.
+Keep the application version equal to the upstream version used by the fork.
+`src-tauri/Cargo.toml` is the source of truth and `package.json` must match it.
+Use `scripts/bump-version.sh <upstream-version>` when adopting a new upstream
+version; keep the version unchanged for fork-only changes. Tag a release as
+`v<version>` on the fork commit, and describe fork changes in its release notes.
+The workflow checks both version files and the release tag before building.
 
 ## Website
 
-Cloudflare Pages serves `https://rayburst.pages.dev` from this repository's `main`
+Upstream Cloudflare Pages serves `https://rayburst.pages.dev` from the upstream `main`
 branch. Use the `website` root directory, `pnpm build` build command, `dist` output
 directory and no framework preset.
 
