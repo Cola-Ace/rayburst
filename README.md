@@ -67,7 +67,7 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 
 # Build the Windows x64 installer
-pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked
+pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis
 ```
 
 ### Verification
