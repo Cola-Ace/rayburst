@@ -56,16 +56,7 @@ pub fn validate_filename(name: &str) -> Result<(), AppError> {
 pub async fn dispatch(app: &AppHandle, mut request: AddRequest) -> Result<AddResponse, AppError> {
     let url = request.url.as_str();
     let parsed = url::Url::parse(url).ok();
-    let engine_link = ["ed2k://", "thunder://"]
-        .iter()
-        .any(|prefix| url.to_ascii_lowercase().starts_with(prefix));
-    if !engine_link
-        && !parsed
-            .as_ref()
-            .is_some_and(|url| matches!(url.scheme(), "http" | "https" | "sftp" | "magnet"))
-    {
-        return Err(AppError::InvalidInput("Unsupported download URL".into()));
-    }
+    validate_uris(std::slice::from_ref(&request.url))?;
     let prefs = preferences::load(app)?;
     crate::commands::database_initialize(app.clone()).await?;
     let mut options = preferences::options(&prefs, &request)?;
@@ -121,21 +112,10 @@ pub async fn dispatch(app: &AppHandle, mut request: AddRequest) -> Result<AddRes
             probe.final_url != request.url
         );
     }
-    // Torrent files need native metainfo inspection and a file-selection dialog.
-    if prefs.extension_download_behavior == preferences::ExtensionDownloadBehavior::Confirm
-        || parsed
-            .as_ref()
-            .is_some_and(|url| url.path().to_ascii_lowercase().ends_with(".torrent"))
-    {
+    if prefs.extension_download_behavior == preferences::ExtensionDownloadBehavior::Confirm {
         return confirm(app, &request, size).await;
     }
-    let gid = submit(
-        app,
-        TaskInput::Uris(vec![request.url.clone()]),
-        options,
-        None,
-    )
-    .await?;
+    let gid = submit(app, vec![request.url.clone()], options, None).await?;
     if prefs.extension_download_behavior == preferences::ExtensionDownloadBehavior::Show {
         super::frontend_action::dispatch_frontend_action(
             app,
@@ -318,59 +298,74 @@ async fn confirm(
     })
 }
 
-pub enum TaskInput {
-    Uris(Vec<String>),
-    Torrent(String),
+pub fn validate_uris(uris: &[String]) -> Result<(), AppError> {
+    if uris.is_empty() {
+        return Err(AppError::InvalidInput("Enter a download URL".into()));
+    }
+    for uri in uris {
+        let parsed = url::Url::parse(uri)
+            .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
+        if parsed.scheme() == "thunder" {
+            use base64::Engine;
+            let payload = uri
+                .split_once("://")
+                .map(|(_, value)| value)
+                .unwrap_or_default();
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(payload)
+                .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
+            let decoded = String::from_utf8(bytes)
+                .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
+            let target = decoded
+                .strip_prefix("AA")
+                .and_then(|value| value.strip_suffix("ZZ"))
+                .ok_or_else(|| AppError::InvalidInput("Invalid download URL".into()))?;
+            let target = url::Url::parse(target)
+                .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
+            if !matches!(target.scheme(), "http" | "https" | "ftp" | "sftp") {
+                return Err(AppError::InvalidInput("Unsupported download URL".into()));
+            }
+        } else if !matches!(parsed.scheme(), "http" | "https" | "ftp" | "sftp") {
+            return Err(AppError::InvalidInput("Unsupported download URL".into()));
+        }
+    }
+    Ok(())
 }
-impl TaskInput {
-    fn is_bittorrent(&self) -> bool {
-        match self {
-            Self::Torrent(_) => true,
-            Self::Uris(uris) => uris.iter().any(|uri| {
-                uri.get(..7)
-                    .is_some_and(|scheme| scheme.eq_ignore_ascii_case("magnet:"))
-            }),
-        }
-    }
 
-    async fn create(
-        self,
-        engine: &crate::services::tasks::TaskService,
-        mut options: serde_json::Value,
-    ) -> Result<String, AppError> {
-        let options_map = options
-            .as_object_mut()
-            .ok_or_else(|| AppError::InvalidInput("Download options must be an object".into()))?;
-        let gid = options_map
-            .entry("gid")
-            .or_insert_with(|| {
-                uuid::Uuid::new_v4().simple().to_string()[..16]
-                    .to_string()
-                    .into()
-            })
-            .as_str()
-            .ok_or_else(|| AppError::InvalidInput("Invalid task ID".into()))?
-            .to_string();
-        engine.tasks.expect_start(&gid).await;
-        let result = match self {
-            Self::Uris(uris) => engine.add_uri(uris, options).await,
-            Self::Torrent(torrent) => engine.add_torrent(&torrent, options).await,
-        };
-        if matches!(
-            result,
-            Err(AppError::Rpc { .. } | AppError::InvalidInput(_))
-        ) {
-            engine.tasks.take_start(&gid).await;
-        }
-        result
+async fn create_task(
+    engine: &crate::services::tasks::TaskService,
+    uris: Vec<String>,
+    mut options: serde_json::Value,
+) -> Result<String, AppError> {
+    let options_map = options
+        .as_object_mut()
+        .ok_or_else(|| AppError::InvalidInput("Download options must be an object".into()))?;
+    let gid = options_map
+        .entry("gid")
+        .or_insert_with(|| {
+            uuid::Uuid::new_v4().simple().to_string()[..16]
+                .to_string()
+                .into()
+        })
+        .as_str()
+        .ok_or_else(|| AppError::InvalidInput("Invalid task ID".into()))?
+        .to_owned();
+    engine.tasks.expect_start(&gid).await;
+    let result = engine.add_uri(uris, options).await;
+    if matches!(
+        result,
+        Err(AppError::Rpc { .. } | AppError::InvalidInput(_))
+    ) {
+        engine.tasks.take_start(&gid).await;
     }
+    result
 }
 
 /// Creates a task. `request_id` names the browser download the add dialog
 /// confirms; it answers that download once the task exists.
 pub async fn submit(
     app: &AppHandle,
-    input: TaskInput,
+    uris: Vec<String>,
     mut options: serde_json::Value,
     request_id: Option<&str>,
 ) -> Result<String, AppError> {
@@ -379,43 +374,18 @@ pub async fn submit(
     let claim = request_id.map(|id| handoffs.claim(id)).transpose()?;
     preferences::validate_save_location(app, &options)?;
     let prefs = preferences::load(app)?;
-    if !prefs.bittorrent_enabled && input.is_bittorrent() {
-        return Err(AppError::InvalidInput(
-            "BitTorrent is turned off in preferences".into(),
-        ));
-    }
-    if let TaskInput::Uris(uris) = &input {
-        preferences::apply_system_proxy(&prefs, uris, &mut options);
-        preferences::apply_site_rules(&prefs, uris, &mut options);
-    }
-    let automatic = if let TaskInput::Uris(uris) = &input {
-        native::prepare(app, &engine, uris, &mut options).await?
-    } else {
-        None
-    };
+    validate_uris(&uris)?;
+    preferences::apply_system_proxy(&prefs, &uris, &mut options);
+    preferences::apply_site_rules(&prefs, &uris, &mut options);
+    let automatic = native::prepare(app, &engine, &uris, &mut options).await?;
     let generation = engine.generation();
-    let selection_gid = options
-        .get("gid")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned);
     let _mutation = engine.mutation.lock().await;
-    let result = input.create(&engine, options).await;
-    match &result {
-        Ok(gid) => {
-            if let Some(claim) = claim {
-                claim.finish(gid.clone());
-            }
-            super::pump::wake(app);
+    let result = create_task(&engine, uris, options).await;
+    if let Ok(gid) = &result {
+        if let Some(claim) = claim {
+            claim.finish(gid.clone());
         }
-        Err(AppError::Rpc { .. } | AppError::InvalidInput(_)) => {
-            if let Some(gid) = selection_gid {
-                app.state::<crate::database::DatabaseState>()
-                    .0
-                    .remove_bt_selection(&gid)
-                    .await?;
-            }
-        }
-        Err(_) => {}
+        super::pump::wake(app);
     }
     drop(_mutation);
     native::finish(app.clone(), engine, automatic, generation).await;

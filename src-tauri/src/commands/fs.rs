@@ -317,34 +317,6 @@ fn free_space(folder: &Path) -> Option<u64> {
     ok.then(|| stat.f_bavail as u64 * stat.f_frsize as u64)
 }
 
-/// Reads a local file selected or referenced by the user.
-///
-/// This command keeps arbitrary user-path reads behind Rust IPC instead of
-/// granting the frontend plugin a wildcard filesystem scope.
-#[tauri::command]
-pub fn read_local_file(path: String) -> Result<Vec<u8>, AppError> {
-    std::fs::read(&path).map_err(|e| AppError::Io(format!("Failed to read file: {e}")))
-}
-
-/// Lists regular file names in a directory.
-///
-/// Used for aria2 metadata cleanup without exposing a wildcard frontend FS
-/// scope. Directory traversal stays in Rust, and only file names are returned.
-#[tauri::command]
-pub fn list_dir_files(path: String) -> Result<Vec<String>, AppError> {
-    let entries =
-        std::fs::read_dir(&path).map_err(|e| AppError::Io(format!("Failed to read dir: {e}")))?;
-    let mut files = Vec::new();
-    for entry in entries.flatten() {
-        if entry.path().is_file() {
-            if let Some(name) = entry.file_name().to_str() {
-                files.push(name.to_string());
-            }
-        }
-    }
-    Ok(files)
-}
-
 /// Normalizes a file-system path for safe use with OS shell APIs.
 ///
 /// Handles three classes of path issues that cause "file not found" errors:

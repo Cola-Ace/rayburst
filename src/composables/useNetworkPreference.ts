@@ -11,9 +11,8 @@
 import type { AppConfig, SiteRule, UserAgentProfile, UserAgentRule } from '@shared/types'
 import { isValidSiteHostPattern } from '@shared/utils/siteRules'
 import { PROXY_SCOPE_OPTIONS, DEFAULT_APP_CONFIG as D } from '@shared/constants'
-import { hasProxyScope, isValidAria2ProxyUrl, isValidBtProxyUrl } from '@shared/utils/proxy'
+import { isValidAria2ProxyUrl } from '@shared/utils/proxy'
 import { buildDownloadProxyOptions, normalizeProxyMode, type EngineProxyMode } from '@shared/utils/proxy'
-import { PROXY_SCOPES } from '@shared/constants'
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -27,7 +26,6 @@ export interface NetworkForm {
     bypass: string
     scope: string[]
   }
-  enableUpnp: boolean
   connectTimeout: number
   timeout: number
   userAgent: string
@@ -77,7 +75,6 @@ export function buildNetworkForm(config: AppConfig): NetworkForm {
       bypass: proxy.bypass ?? D.proxy.bypass,
       scope: proxy.scope ?? [...PROXY_SCOPE_OPTIONS],
     },
-    enableUpnp: config.enableUpnp,
     connectTimeout: config.connectTimeout,
     timeout: config.timeout,
     userAgent: config.userAgent,
@@ -99,8 +96,6 @@ export function buildNetworkSystemConfig(f: NetworkForm): Record<string, string>
     'user-agent': f.userAgent || '',
     'connect-timeout': String(f.connectTimeout),
     timeout: String(f.timeout),
-    'bt-port-mapping': String(!!f.enableUpnp),
-    'ed2k-port-mapping': String(!!f.enableUpnp),
     'dns-over-https': f.dnsOverHttps.trim(),
     'check-certificate': String(f.checkCertificate),
     ...buildDownloadProxyOptions(f.proxy),
@@ -129,14 +124,7 @@ export function validateNetworkForm(f: NetworkForm): string | null {
   if (f.siteRules.some((rule) => rule.hostPattern && !isValidSiteHostPattern(rule.hostPattern)))
     return 'preferences.site-rule-invalid'
   if (f.proxy.mode === 'manual' && f.proxy.server) {
-    const regularDownloads = hasProxyScope(f.proxy, PROXY_SCOPES.DOWNLOAD)
-    const bittorrent = hasProxyScope(f.proxy, PROXY_SCOPES.BITTORRENT)
-    if ((!bittorrent || regularDownloads) && !isValidAria2ProxyUrl(f.proxy.server)) {
-      return 'preferences.invalid-proxy-url'
-    }
-    if (bittorrent && !isValidBtProxyUrl(f.proxy.server)) {
-      return 'preferences.bt-proxy-unsupported-protocol'
-    }
+    if (!isValidAria2ProxyUrl(f.proxy.server)) return 'preferences.invalid-proxy-url'
   }
   return null
 }

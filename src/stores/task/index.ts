@@ -1,23 +1,13 @@
 /** @fileoverview Pinia store for download task management: list, add, pause, resume, remove. */
 import { defineStore } from 'pinia'
 import { canSelectMedia } from '@shared/utils/media'
-import { isPendingMagnetSelectionTask } from '@/composables/useMagnetFlow'
 import { useTaskSelectionStore, type SelectionRequest } from '@/stores/taskSelection'
 import { computed, reactive, ref, watch } from 'vue'
 import { EMPTY_STRING } from '@shared/constants'
-import { checkTaskIsEd2kSearch } from '@shared/utils'
 import { logger } from '@shared/logger'
-import type {
-  Aria2Task,
-  Aria2File,
-  Aria2Peer,
-  Aria2EngineOptions,
-  AddUriParams,
-  TaskApi,
-  HistoryRecord,
-} from '@shared/types'
+import type { Aria2Task, Aria2File, Aria2EngineOptions, AddUriParams, TaskApi, HistoryRecord } from '@shared/types'
 
-import { mergeHistoryIntoTasks, isMetadataTask } from '@/composables/useTaskLifecycle'
+import { mergeHistoryIntoTasks } from '@/composables/useTaskLifecycle'
 import {
   registerAddedAt,
   getAddedAt,
@@ -44,7 +34,7 @@ import { resubmitTask, type TaskResubmissionMode } from './resubmit'
 import { createTaskOperations } from './operations'
 import { updateTasksInPlace } from './reconcile'
 
-export type { Aria2Task, Aria2File, Aria2Peer }
+export type { Aria2Task, Aria2File }
 
 const DEFAULT_TASK_PAGE_SIZE = 20
 const TASK_SCOPES: readonly TaskScope[] = ['all', 'progress', 'failed', 'completed']
@@ -70,10 +60,8 @@ export const useTaskStore = defineStore('task', () => {
   const taskDetailVisible = ref(false)
   const taskDetailClosing = ref(false)
   const currentTaskGid = ref(EMPTY_STRING)
-  const enabledFetchPeers = ref(false)
   const currentTaskItem = ref<Aria2Task | null>(null)
   const currentTaskFiles = ref<Aria2File[]>([])
-  const currentTaskPeers = ref<Aria2Peer[]>([])
   const taskList = ref<Aria2Task[]>([])
   const removingGids = ref<string[]>([])
   /** Tasks the user picked in the current list for a batch action. */
@@ -99,17 +87,7 @@ export const useTaskStore = defineStore('task', () => {
   let refreshAgain = false
   let historyWork: Promise<void> | undefined
   let historyAgain = false
-  let detailWork: Promise<void> | undefined
   const resubmissionPromises = new Map<string, Promise<void>>()
-  /** In-memory map: GID → original .torrent file path for post-download cleanup. */
-  const torrentSourcePaths = new Map<string, string>()
-  const registerTorrentSource = (gid: string, path: string) => torrentSourcePaths.set(gid, path)
-  function consumeTorrentSource(gid: string): string | undefined {
-    const p = torrentSourcePaths.get(gid)
-    if (p) torrentSourcePaths.delete(gid)
-    return p
-  }
-
   function setApi(a: TaskApi) {
     api = a
     apiReady = true
@@ -122,7 +100,6 @@ export const useTaskStore = defineStore('task', () => {
       fetchList,
       setTaskRemoving,
       requestMediaSelection: (task) => useTaskSelectionStore().request({ kind: 'media', gid: task.gid }),
-      requestMagnetSelection: (gid) => useTaskSelectionStore().request({ kind: 'bt', gid }),
       clearSelections: (gids) => useTaskSelectionStore().forget(gids),
     })
     Object.assign(taskOps, ops)
@@ -214,20 +191,13 @@ export const useTaskStore = defineStore('task', () => {
     const waiting: SelectionRequest[] = []
     const available: SelectionRequest[] = []
     for (const task of liveSnapshot) {
-      if (isPendingMagnetSelectionTask(task)) {
-        waiting.push({ kind: 'bt', gid: task.gid })
-        available.push({ kind: 'bt', gid: task.gid })
-      } else if (canSelectMedia(task)) {
+      if (canSelectMedia(task)) {
         available.push({ kind: 'media', gid: task.gid })
         if (task.media?.state === 'awaiting-selection') waiting.push({ kind: 'media', gid: task.gid })
       }
     }
     const selection = useTaskSelectionStore()
-    selection.reconcile(
-      waiting,
-      available,
-      liveSnapshot.filter((task) => task.selectionPrompt).map((task) => task.gid),
-    )
+    selection.reconcile(waiting, available)
     selection.forget(
       liveSnapshot.filter((task) => ['complete', 'removed'].includes(task.status)).map((task) => task.gid),
     )
@@ -235,9 +205,7 @@ export const useTaskStore = defineStore('task', () => {
     const tasks = mergeHistoryIntoTasks(
       liveSnapshot.filter((task) => task.status !== 'removed'),
       historyRecords,
-    ).filter(
-      (task) => !removing.has(task.gid) && !checkTaskIsEd2kSearch(task) && (isLiveTask(task) || !isMetadataTask(task)),
-    )
+    ).filter((task) => !removing.has(task.gid))
 
     Object.assign(taskCounts, {
       all: tasks.length,
@@ -273,7 +241,7 @@ export const useTaskStore = defineStore('task', () => {
     refreshCurrentTaskPageCount()
     if (taskDetailVisible.value) {
       const current = tasks.find((task) => task.gid === currentTaskGid.value)
-      if (current) updateCurrentTaskItem({ ...current, peers: currentTaskPeers.value })
+      if (current) updateCurrentTaskItem(current)
     }
   }
 
@@ -298,27 +266,10 @@ export const useTaskStore = defineStore('task', () => {
     })
   }
 
-  function refreshDetail() {
-    if (detailWork || !taskDetailVisible.value || !currentTaskGid.value) return
-    const gid = currentTaskGid.value
-    detailWork = api
-      .fetchTaskItemWithPeers({ gid })
-      .then((task) => {
-        if (taskDetailVisible.value && currentTaskGid.value === gid) {
-          currentTaskPeers.value = task.peers ?? []
-        }
-      })
-      .catch((error: unknown) => logger.debug('TaskStore.fetchPeers', error))
-      .finally(() => {
-        detailWork = undefined
-      })
-  }
-
   /** Applies a pump snapshot, pushed as `tasks:snapshot` or returned by a refresh. */
   function applySnapshot(tasks: Aria2Task[]) {
     liveSnapshot = tasks
     publishSnapshot()
-    refreshDetail()
   }
 
   /** Concurrent calls share the current read; actions request one fresh read after it. */
@@ -468,10 +419,8 @@ export const useTaskStore = defineStore('task', () => {
     currentTaskItem.value = task
     if (task) {
       currentTaskFiles.value = task.files
-      currentTaskPeers.value = task.peers || []
     } else {
       currentTaskFiles.value = []
-      currentTaskPeers.value = []
     }
   }
 
@@ -499,33 +448,6 @@ export const useTaskStore = defineStore('task', () => {
     return gid
   }
 
-  /**
-   * Adds a magnet URI as a normal download. The returned GID owns the complete
-   * metadata, file-selection, download, and seeding lifecycle.
-   *
-   * aria2 either continues with every file or pauses for selection according
-   * to the application-owned magnet selection policy.
-   */
-  async function addMagnetUri(data: { uri: string; requestId?: string; options: Aria2EngineOptions }): Promise<string> {
-    const gids = await api.addUri({
-      uris: [data.uri],
-      outs: [],
-      options: data.options,
-      ...(data.requestId ? { contexts: { [data.uri]: { requestId: data.requestId } } } : {}),
-    })
-    const gid = gids[0]
-
-    // Register birth timestamp
-    const now = new Date().toISOString()
-    registerAddedAt(gid, now)
-    const historyStore = useHistoryStore()
-    historyStore.recordTaskBirth(gid, now).catch((e) => logger.debug('taskBirth.write', e))
-
-    await fetchList()
-    return gid
-  }
-
-  /** Fetch a single task's full status. */
   async function fetchTaskStatus(gid: string): Promise<Aria2Task> {
     return api.fetchTaskItem({ gid })
   }
@@ -533,16 +455,6 @@ export const useTaskStore = defineStore('task', () => {
   /** Retrieves the file list for a download task. */
   async function getFiles(gid: string): Promise<Aria2File[]> {
     return api.getFiles({ gid })
-  }
-
-  async function addTorrent(data: { torrent: string; options: Aria2EngineOptions; requestId?: string }) {
-    const gid = await api.addTorrent(data)
-    const now = new Date().toISOString()
-    registerAddedAt(gid, now)
-    const historyStore = useHistoryStore()
-    historyStore.recordTaskBirth(gid, now).catch((e) => logger.debug('taskBirth.write', e))
-    await fetchList()
-    return gid
   }
 
   async function getTaskOption(gid: string) {
@@ -607,10 +519,8 @@ export const useTaskStore = defineStore('task', () => {
     taskDetailVisible,
     taskDetailClosing,
     currentTaskGid,
-    enabledFetchPeers,
     currentTaskItem,
     currentTaskFiles,
-    currentTaskPeers,
     taskList,
     removingGids,
     resubmittingGids,
@@ -640,8 +550,6 @@ export const useTaskStore = defineStore('task', () => {
     updateCurrentTaskItem,
     addUri,
     addUriAtomic,
-    addTorrent,
-    addMagnetUri,
     getFiles,
     fetchTaskStatus,
     getTaskOption,
@@ -649,8 +557,6 @@ export const useTaskStore = defineStore('task', () => {
     removeTask: (task: Aria2Task, options?: import('@shared/types').TaskDeletionOptions) =>
       taskOps.removeTask(task, options),
     pauseTask: (task: Aria2Task) => taskOps.pauseTask(task),
-    finishSharing: (task: Aria2Task) => taskOps.finishSharing(task),
-    finishSharingTasks: (gids: string[]) => taskOps.finishSharingTasks(gids),
     resumeTask: (task: Aria2Task) => taskOps.resumeTask(task),
     pauseAllTask: () => taskOps.pauseAllTask(),
     resumeAllTask: () => taskOps.resumeAllTask(),
@@ -665,8 +571,6 @@ export const useTaskStore = defineStore('task', () => {
     retryTask: (task: Aria2Task, source?: string) => resubmitTerminalTask(task, 'retry', source),
     redownloadTask: (task: Aria2Task) => resubmitTerminalTask(task, 'redownload'),
 
-    registerTorrentSource,
-    consumeTorrentSource,
     hasActiveTasks: () => taskOps.hasActiveTasks(),
     hasPausedTasks: () => taskOps.hasPausedTasks(),
   }

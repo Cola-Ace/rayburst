@@ -1,6 +1,5 @@
 //! Files the application itself downloads: update metadata and packages,
-//! remote torrents, tracker lists, the BT peer blocklist and the ED2K
-//! bootstrap files.
+//! shared through the managed engine connection.
 //!
 //! They go through the engine as hidden tasks, so they share its connection
 //! handling, retries, proxy and TLS with the user's downloads, and a large
@@ -289,12 +288,6 @@ fn too_large(size: u64, max: u64) -> AppError {
     AppError::Io(format!("Response too large: {size} bytes (max {max})"))
 }
 
-/// Makes a request directly, without the engine.
-#[cfg(test)]
-pub(crate) async fn fetch_direct(request: &FetchRequest) -> Result<Vec<u8>, AppError> {
-    direct(request, &mut |_, _| {}, &|| false).await
-}
-
 /// The same request without the engine.
 async fn direct(
     request: &FetchRequest,
@@ -420,23 +413,6 @@ mod tests {
 
     fn request() -> FetchRequest {
         FetchRequest::small("https://example.com/list.txt", None, 1024)
-    }
-
-    #[test]
-    fn small_requests_take_one_direct_connection() {
-        let options = task_options(
-            "0123456789abcdef",
-            Path::new("/cache/engine-fetch/x"),
-            &request(),
-        );
-        assert_eq!(options["gid"], "0123456789abcdef");
-        assert_eq!(options["out"], BODY);
-        assert_eq!(options["split"], "1");
-        assert_eq!(options["max-connection-per-server"], "1");
-        assert_eq!(options["follow-torrent"], "false");
-        // An empty proxy overrides a global download proxy.
-        assert_eq!(options["all-proxy"], "");
-        assert!(options.get("header").is_none());
     }
 
     #[test]

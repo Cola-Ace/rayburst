@@ -15,10 +15,8 @@ const emit = defineEmits<{ moved: [] }>()
 const { t } = useI18n()
 const message = useAppMessage()
 const busy = ref(false)
-// The engine moves HTTP, FTP and BitTorrent files; media and ED2K keep theirs.
-const available = computed(
-  () => ['active', 'waiting', 'paused'].includes(props.task.status) && !props.task.media && !props.task.ed2k,
-)
+// Media tasks own their output paths.
+const available = computed(() => ['active', 'waiting', 'paused'].includes(props.task.status) && !props.task.media)
 async function move() {
   if (busy.value) return
   const selected = await openDialog({ directory: true, defaultPath: props.task.dir || undefined })

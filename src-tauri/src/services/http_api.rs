@@ -4,7 +4,7 @@
 //! tokio runtime.  Provides a local REST API for browser extension → desktop
 //! communication: download handoff (`/add`), the popup's task list
 //! (`/tasks`) and controls, and media capture (`/media/v2`).
-use crate::commands::remote_file::summarize_url_for_log;
+use crate::commands::download_preview::summarize_url_for_log;
 use crate::error::AppError;
 use crate::services::config::{RuntimeConfigState, DEFAULT_EXTENSION_API_PORT};
 use crate::services::tasks::TaskServiceState;
@@ -47,7 +47,6 @@ pub struct VersionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct StatResponse {
     pub download_speed: String,
-    pub upload_speed: String,
     pub num_active: String,
     pub num_waiting: String,
     pub num_stopped: String,
@@ -58,7 +57,6 @@ impl From<crate::aria2::types::Aria2GlobalStat> for StatResponse {
     fn from(stat: crate::aria2::types::Aria2GlobalStat) -> Self {
         Self {
             download_speed: stat.download_speed,
-            upload_speed: stat.upload_speed,
             num_active: stat.num_active,
             num_waiting: stat.num_waiting,
             num_stopped: stat.num_stopped,
@@ -354,7 +352,7 @@ async fn handle_version(State(ctx): State<Arc<ApiContext>>) -> impl IntoResponse
     })
 }
 
-/// GET /stat — global download/upload statistics.
+/// GET /stat — global download statistics.
 ///
 /// Returns the same shape as aria2's `getGlobalStat`, allowing the
 /// extension popup to display speed and task counts without needing
@@ -491,9 +489,9 @@ async fn task_action(
         .try_state::<TaskServiceState>()
         .ok_or_else(|| engine_unavailable(&ctx.app))?;
     let result = if resume {
-        super::tasks::bittorrent::resume(&ctx.app, &aria2.0, gid).await
+        aria2.0.resume_task(gid).await
     } else {
-        super::tasks::bittorrent::pause(&ctx.app, &aria2.0, Some(gid), false).await
+        aria2.0.pause(gid).await
     };
     super::pump::wake(&ctx.app);
     Ok(Json(match result {
@@ -546,7 +544,7 @@ async fn handle_pause_all(
         }
     };
 
-    match super::tasks::bittorrent::pause(&ctx.app, &aria2.0, None, true).await {
+    match aria2.0.force_pause_all().await {
         Ok(_) => Ok(Json(ActionResponse {
             status: "ok".to_string(),
             error: None,
@@ -578,7 +576,7 @@ async fn handle_resume_all(
         }
     };
 
-    match super::tasks::bittorrent::resume_all(&ctx.app, &aria2.0).await {
+    match aria2.0.resume_eligible().await {
         Ok(result) => {
             log::info!(
                 "http_api: POST /resume-all resumed={} blocked={}",

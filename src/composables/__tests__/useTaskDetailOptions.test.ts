@@ -33,9 +33,9 @@ function makeTask(overrides: Partial<Aria2Task> = {}): Aria2Task {
     status: TASK_STATUS.ACTIVE as Aria2Task['status'],
     totalLength: '1000000',
     completedLength: '500000',
-    uploadLength: '0',
+
     downloadSpeed: '10000',
-    uploadSpeed: '0',
+
     connections: '5',
     dir: '/downloads',
     files: [],

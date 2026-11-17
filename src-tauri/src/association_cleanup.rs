@@ -79,7 +79,7 @@ pub(crate) fn cleanup(directory: &Path) -> io::Result<()> {
             {
                 continue;
             }
-            for scheme in ["rayburst", "magnet", "ed2k", "thunder"] {
+            for scheme in ["rayburst", "thunder"] {
                 let key = format!("Software\\Classes\\{old}.Url.{scheme}");
                 if read(&root, &format!("{key}\\shell\\open\\command"), "")
                     .and_then(|command| command_path(&command))
@@ -89,15 +89,12 @@ pub(crate) fn cleanup(directory: &Path) -> io::Result<()> {
                 }
             }
             // A surviving handler may belong to another installed copy.
-            if ["rayburst", "magnet", "ed2k", "thunder"]
-                .iter()
-                .any(|scheme| {
-                    !matches!(
-                        root.open_subkey(format!("Software\\Classes\\{old}.Url.{scheme}")),
-                        Err(error) if error.kind() == io::ErrorKind::NotFound
-                    )
-                })
-            {
+            if ["rayburst", "thunder"].iter().any(|scheme| {
+                !matches!(
+                    root.open_subkey(format!("Software\\Classes\\{old}.Url.{scheme}")),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound
+                )
+            }) {
                 continue;
             }
             remove(&root, &capabilities)?;
@@ -105,21 +102,6 @@ pub(crate) fn cleanup(directory: &Path) -> io::Result<()> {
                 root.open_subkey_with_flags("Software\\RegisteredApplications", KEY_SET_VALUE)
             {
                 let _ = key.delete_value(old);
-            }
-        }
-        // Tauri previously used a generic file class rather than our ProgID.
-        let command = format!("{} \"%1\"", application.display());
-        if read(
-            &root,
-            "Software\\Classes\\BitTorrent\\shell\\open\\command",
-            "",
-        )
-        .is_some_and(|value| value.eq_ignore_ascii_case(&command))
-        {
-            remove(&root, "Software\\Classes\\BitTorrent")?;
-            if read(&root, "Software\\Classes\\.torrent", "").as_deref() == Some("BitTorrent") {
-                root.open_subkey_with_flags("Software\\Classes\\.torrent", KEY_SET_VALUE)?
-                    .delete_value("")?;
             }
         }
     }

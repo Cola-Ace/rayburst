@@ -7,10 +7,8 @@ import { NIcon } from 'naive-ui'
 import LinearProgress from '@/components/common/LinearProgress.vue'
 import MTooltip from '@/components/common/MTooltip.vue'
 import {
-  ArrowUpOutline,
   ArrowDownOutline,
   GitNetworkOutline,
-  MagnetOutline,
   AlertCircleOutline,
   CloudUploadOutline,
   CheckmarkCircleOutline,
@@ -33,7 +31,6 @@ const emit = defineEmits<{
   resume: [task: Aria2Task]
   retry: [task: Aria2Task]
   redownload: [task: Aria2Task]
-  'finish-sharing': [task: Aria2Task]
   'finish-media': [task: Aria2Task]
   delete: [task: Aria2Task]
   'delete-record': [task: Aria2Task]
@@ -41,7 +38,6 @@ const emit = defineEmits<{
   'show-info': [task: Aria2Task]
   folder: [task: Aria2Task]
   'open-file': [task: Aria2Task]
-  'select-files': [task: Aria2Task]
 }>()
 
 const { t } = useI18n()
@@ -49,7 +45,6 @@ const taskRef = computed(() => props.task)
 
 const {
   taskFullName,
-  isSharing,
   statusBadge,
   taskStatus,
   isActive,
@@ -59,10 +54,8 @@ const {
   totalSize,
   hasSizeInfo,
   downloadSpeed,
-  uploadSpeed,
   remaining,
   remainingText,
-  transferSummary,
 } = useTaskCardModel(taskRef)
 
 const statusColorMap: Record<string, string> = {
@@ -72,12 +65,11 @@ const statusColorMap: Record<string, string> = {
   error: 'var(--m3-status-error)',
   complete: 'var(--m3-status-success)',
   removed: 'var(--m3-status-paused)',
-  sharing: 'var(--m3-status-success)',
 }
 
 const progressColor = computed(() => statusColorMap[taskStatus.value] || 'var(--m3-status-active)')
 const hasStatusLine = computed(() => Boolean(statusBadge.value || fileMissing.value))
-const displayErrorMessage = computed(() => props.task.errorMessage || props.task.bittorrent?.error?.message || '')
+const displayErrorMessage = computed(() => props.task.errorMessage || '')
 
 const statusBadgeStyle = computed(() => {
   switch (statusBadge.value?.tone) {
@@ -99,20 +91,17 @@ const statusBadgeIcon = computed(() => {
     case TASK_STATUS.COMPLETE:
       return CheckmarkCircleOutline
     case TASK_STATUS.ERROR:
-    case 'bt-error':
       return AlertCircleOutline
     case TASK_STATUS.REMOVED:
       return TrashOutline
     case TASK_STATUS.WAITING:
       return TimeOutline
     case 'awaiting-selection':
-    case 'bt-file-selection':
       return ListOutline
     case 'probing':
     case 'recording':
     case 'downloading':
     case 'finalizing':
-    case 'bt-metadata-fetching':
       return RadioOutline
     default:
       return CloudUploadOutline
@@ -122,16 +111,13 @@ const statusBadgeIcon = computed(() => {
 const { fileMissing, fileState } = useTaskFileMissing(taskRef)
 // The rail orders the list; the rest of a finished card drags its file out.
 const contentDraggable = computed(
-  () => !fileMissing.value && !props.actionPending && (props.task.status === TASK_STATUS.COMPLETE || isSharing.value),
+  () => !fileMissing.value && !props.actionPending && props.task.status === TASK_STATUS.COMPLETE,
 )
 </script>
 
 <template>
   <div
     class="task-item"
-    :class="{
-      'is-sharing': isSharing,
-    }"
     @dblclick="!fileMissing && !actionPending && canOpenTaskContent(task, $event) && emit('open-file', task)"
   >
     <TaskDragHandle class="task-drag-rail" />
@@ -155,7 +141,6 @@ const contentDraggable = computed(
           @resume="emit('resume', task)"
           @retry="emit('retry', task)"
           @redownload="emit('redownload', task)"
-          @finish-sharing="emit('finish-sharing', task)"
           @finish-media="emit('finish-media', task)"
           @delete="emit('delete', task)"
           @delete-record="emit('delete-record', task)"
@@ -163,7 +148,6 @@ const contentDraggable = computed(
           @show-info="emit('show-info', task)"
           @folder="emit('folder', task)"
           @open-file="emit('open-file', task)"
-          @select-files="emit('select-files', task)"
         />
       </div>
       <div class="task-status-slot" :class="{ 'task-status-slot--visible': hasStatusLine }">
@@ -192,18 +176,11 @@ const contentDraggable = computed(
             <span class="speed-text" :class="{ 'info-hidden': remaining <= 0 }">
               <span>{{ remainingText }}</span>
             </span>
-            <span v-if="transferSummary.showUploadMetrics" class="speed-text">
-              <NIcon :size="10"><ArrowUpOutline /></NIcon>
-              <span>{{ uploadSpeed }}/s</span>
-            </span>
             <span class="speed-text">
               <NIcon :size="10"><ArrowDownOutline /></NIcon>
               <span>{{ downloadSpeed }}/s</span>
             </span>
-            <span v-if="transferSummary.showSeeders" class="speed-text">
-              <NIcon :size="10"><MagnetOutline /></NIcon>
-              <span>{{ task.numSeeders }}</span>
-            </span>
+
             <span class="speed-text">
               <NIcon :size="10"><GitNetworkOutline /></NIcon>
               <span>{{ task.connections }}</span>
@@ -226,29 +203,11 @@ const contentDraggable = computed(
   min-height: 78px;
   background-color: var(--task-item-bg);
   border: 1px solid var(--m3-outline-variant);
-  /* Reserve 3px left border at base color so sharing only animates color */
+  /* Reserve the leading border width for status changes */
   border-left: 3px solid var(--m3-outline-variant);
   border-radius: var(--radius-sm);
   overflow: hidden;
   transition: border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
-}
-/* Gradient overlay — always present, hidden by default */
-.task-item::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--m3-success) 6%, transparent) 0%, transparent 40%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--task-motion-state) var(--task-motion-ease);
-}
-/* ── Seeding state (static) ────────────────────────────────────────── */
-.task-item.is-sharing {
-  border-left-color: var(--m3-success);
-}
-.task-item.is-sharing::before {
-  opacity: 1;
 }
 .task-item:hover .task-drag-rail {
   opacity: 0.64;

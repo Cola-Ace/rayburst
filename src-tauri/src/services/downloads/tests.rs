@@ -4,6 +4,32 @@ use serde_json::json;
 use std::sync::Arc;
 
 #[test]
+fn submissions_accept_only_supported_transfer_protocols() {
+    use base64::Engine;
+    for uri in [
+        "https://example.test/file.zip",
+        "http://example.test/archive.torrent",
+        "ftp://example.test/file.zip",
+        "sftp://example.test/file.zip",
+    ] {
+        assert!(validate_uris(&[uri.into()]).is_ok());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(format!("AA{uri}ZZ"));
+        assert!(validate_uris(&[format!("thunder://{encoded}")]).is_ok());
+    }
+    for uri in [
+        "magnet:?xt=urn:btih:abc",
+        "ed2k://|file|a.zip|123|0123456789abcdef0123456789abcdef|/",
+        "file:///downloads/archive.torrent",
+    ] {
+        assert!(validate_uris(&[uri.into()]).is_err());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(format!("AA{uri}ZZ"));
+        assert!(validate_uris(&[format!("thunder://{encoded}")]).is_err());
+    }
+    assert!(validate_uris(&[]).is_err());
+    assert!(validate_uris(&["thunder://invalid".into()]).is_err());
+}
+
+#[test]
 fn filename_input_cannot_escape_the_selected_directory() {
     for name in [
         "../file",

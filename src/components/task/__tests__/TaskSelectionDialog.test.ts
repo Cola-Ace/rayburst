@@ -11,8 +11,6 @@ const mocks = vi.hoisted(() => ({
   getOption: vi.fn(),
   confirmMedia: vi.fn(),
   fetchList: vi.fn(),
-  selectBtFiles: vi.fn(),
-  deferBtSelection: vi.fn(),
   modalShows: vi.fn(),
 }))
 vi.mock('@/stores/task', () => ({ useTaskStore: () => mocks }))
@@ -20,7 +18,6 @@ vi.mock('@/api/aria2', () => mocks)
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key, locale: ref('en-US') }) }))
 import TaskSelectionHost from '../TaskSelectionHost.vue'
 import MediaSelectionDialog from '../MediaSelectionDialog.vue'
-import BtSelectionDialog from '../BtSelectionDialog.vue'
 
 function mediaTask(gid: string): Aria2Task {
   return {
@@ -28,9 +25,9 @@ function mediaTask(gid: string): Aria2Task {
     status: 'paused',
     totalLength: '0',
     completedLength: '0',
-    uploadLength: '0',
+
     downloadSpeed: '0',
-    uploadSpeed: '0',
+
     connections: '0',
     dir: '/tmp',
     files: [],
@@ -91,7 +88,6 @@ function setup(blocked = false, preopened = false) {
         Alert: { template: '<aside><slot /></aside>' },
         Spin: true,
         MediaOptions: true,
-        BtFileSelector: true,
       },
     },
   })
@@ -131,8 +127,8 @@ describe('shared task selection dialog', () => {
     const later = wrapper
       .findComponent(MediaSelectionDialog)
       .findAll('button')
-      .find((button) => button.text() === 'task.magnet-choose-later')!
-    expect(wrapper.html()).toContain('task.magnet-choose-later')
+      .find((button) => button.text() === 'media.choose-later')!
+    expect(wrapper.html()).toContain('media.choose-later')
     await later.trigger('click')
     expect(selection.current?.gid).toBe('a')
     expect(selection.visible).toBe(false)
@@ -150,7 +146,7 @@ describe('shared task selection dialog', () => {
     const start = wrapper
       .findComponent(MediaSelectionDialog)
       .findAll('button')
-      .find((button) => button.text() === 'task.magnet-start-download')!
+      .find((button) => button.text() === 'media.start-download')!
     await start.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Connection lost')
@@ -180,58 +176,12 @@ describe('shared task selection dialog', () => {
     expect(selection.phase).toBe('closing')
     wrapper.unmount()
   })
-  it('uses a separate BT dialog and then presents media after its exit', async () => {
-    const bt = {
-      ...mediaTask('a'),
-      media: undefined,
-      bittorrent: { state: 'paused' as const, fileSelectionState: 'awaiting' as 'awaiting' | 'ready' },
-    }
-    mocks.fetchTaskStatus.mockImplementation(async (gid: string) => (gid === 'a' ? bt : mediaTask(gid)))
-    mocks.getFiles.mockResolvedValue([
-      { index: '1', path: '/tmp/file.bin', length: '10', completedLength: '0', selected: 'true', uris: [] },
-    ])
-    const { wrapper, selection } = setup(true)
-    selection.queue[0] = { kind: 'bt', gid: 'a' }
-    await wrapper.setProps({ blocked: false })
-    await flushPromises()
-    expect(wrapper.find('bt-file-selector-stub').exists()).toBe(true)
-    expect(mocks.getOption).not.toHaveBeenCalled()
-    const start = wrapper
-      .findComponent(BtSelectionDialog)
-      .findAll('button')
-      .find((button) => button.text() === 'task.magnet-start-download')!
-    mocks.selectBtFiles.mockImplementationOnce(async () => {
-      bt.bittorrent.fileSelectionState = 'ready'
-      selection.reconcile(
-        [{ kind: 'bt', gid: 'a' }],
-        [
-          { kind: 'bt', gid: 'a' },
-          { kind: 'media', gid: 'b' },
-        ],
-        ['a'],
-      )
-      throw new Error('Resume failed')
-    })
-    await start.trigger('click')
-    await flushPromises()
-    expect(selection.visible).toBe(true)
-    expect(wrapper.text()).toContain('Resume failed')
-    await start.trigger('click')
-    await flushPromises()
-    expect(mocks.selectBtFiles).toHaveBeenCalledWith('a', [1])
-    expect(mocks.confirmMedia).not.toHaveBeenCalled()
-    wrapper.findComponent(BtSelectionDialog).findComponent({ name: 'ModalTestStub' }).vm.$emit('afterLeave')
-    await flushPromises()
-    expect(wrapper.find('media-options-stub').exists()).toBe(true)
-    expect(mocks.getOption).toHaveBeenCalledWith({ gid: 'b' })
-    wrapper.unmount()
-  })
 
   it('mounts closed modal instances before requesting their native enter transitions', async () => {
     const { wrapper } = setup()
-    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false, false])
+    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false])
     await flushPromises()
-    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false, false, true])
+    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false, true])
     expect(
       wrapper.findComponent(MediaSelectionDialog).findComponent({ name: 'ModalTestStub' }).attributes('transition'),
     ).toBeUndefined()
@@ -249,7 +199,7 @@ describe('shared task selection dialog', () => {
     const dialog = wrapper.findComponent(MediaSelectionDialog)
     await dialog
       .findAll('button')
-      .find((button) => button.text() === 'task.magnet-start-download')!
+      .find((button) => button.text() === 'media.start-download')!
       .trigger('click')
     await flushPromises()
     selection.close()
@@ -265,9 +215,9 @@ describe('shared task selection dialog', () => {
   })
   it('enters natively when the host remounts with an already active request', async () => {
     const { wrapper } = setup(false, true)
-    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false, false])
+    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false])
     await flushPromises()
-    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false, false, true])
+    expect(mocks.modalShows.mock.calls.map(([show]) => show)).toEqual([false, true])
     wrapper.unmount()
   })
 })

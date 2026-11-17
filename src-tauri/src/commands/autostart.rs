@@ -5,10 +5,7 @@
 //! install path with spaces reached Windows as `D:\Program` (#716), and every
 //! `enable()` also cleared the user's "disabled" choice in Task Manager.
 //!
-//! [`set_autostart`] applies a choice made in the settings. [`sync_autostart`]
-//! runs at every launch: it repairs a missing or outdated registration (a
-//! moved install, an unquoted path from an older version) but leaves the
-//! system's own on/off switch alone.
+//! [`set_autostart`] applies an explicit choice made in the settings.
 
 use crate::error::AppError;
 use std::path::{Path, PathBuf};
@@ -20,12 +17,6 @@ const ARGUMENT: &str = "--autostart";
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), AppError> {
     apply(&app, enabled, true)
-}
-
-/// Keeps the registration in line with the preference at launch.
-#[tauri::command]
-pub async fn sync_autostart(app: AppHandle, enabled: bool) -> Result<(), AppError> {
-    apply(&app, enabled, false)
 }
 
 fn apply(app: &AppHandle, enabled: bool, chosen: bool) -> Result<(), AppError> {

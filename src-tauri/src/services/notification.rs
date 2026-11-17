@@ -3,10 +3,7 @@
 use super::config::RuntimeConfig;
 use super::monitor::{events, TaskEvent};
 use crate::error::AppError;
-use crate::i18n::{
-    bt_complete, download_complete, download_failed, download_start, ed2k_complete,
-    resolve_preferred_locale,
-};
+use crate::i18n::{download_complete, download_failed, download_start, resolve_preferred_locale};
 use tauri::Manager;
 
 /// Consume only newly submitted tasks. Restored tasks and internal probes never
@@ -23,15 +20,7 @@ pub async fn notify_started_tasks(
             continue;
         }
         if !matches!(task.status.as_str(), "active" | "complete")
-            || super::monitor::is_metadata_task(task)
             || engine.tasks.is_internal(&task.gid).await
-            || task.bittorrent.as_ref().is_some_and(|bt| {
-                bt.info.is_none()
-                    || bt
-                        .file_selection_state
-                        .as_deref()
-                        .is_some_and(|state| state != "none")
-            })
             || task.media.as_ref().is_some_and(|media| {
                 !matches!(
                     media.state.as_str(),
@@ -180,7 +169,6 @@ fn trim_linux_notifications_to_limit(
 pub enum TaskNotificationKind {
     Start,
     Complete,
-    P2pDownloadComplete,
     Error,
 }
 
@@ -226,7 +214,6 @@ pub fn linux_notification_identity() -> LinuxNotificationIdentity {
 fn kind_for_event(event_name: &str) -> Option<TaskNotificationKind> {
     match event_name {
         events::TASK_COMPLETE => Some(TaskNotificationKind::Complete),
-        events::P2P_DOWNLOAD_COMPLETE => Some(TaskNotificationKind::P2pDownloadComplete),
         events::TASK_ERROR => Some(TaskNotificationKind::Error),
         _ => None,
     }
@@ -239,9 +226,7 @@ fn notification_enabled(kind: TaskNotificationKind, config: &RuntimeConfig) -> b
 
     match kind {
         TaskNotificationKind::Start => config.notify_on_start,
-        TaskNotificationKind::Complete | TaskNotificationKind::P2pDownloadComplete => {
-            config.notify_on_complete
-        }
+        TaskNotificationKind::Complete => config.notify_on_complete,
         TaskNotificationKind::Error => true,
     }
 }
@@ -260,7 +245,7 @@ pub fn build_task_notification(
     let task_name = event.name.as_str();
 
     let target = match kind {
-        TaskNotificationKind::Complete | TaskNotificationKind::P2pDownloadComplete => {
+        TaskNotificationKind::Complete => {
             if config.notification_click_action == "open" {
                 NotificationTarget::Open(event.output_path())
             } else {
@@ -272,13 +257,6 @@ pub fn build_task_notification(
     let message = match kind {
         TaskNotificationKind::Start => return None,
         TaskNotificationKind::Complete => download_complete(&locale, task_name),
-        TaskNotificationKind::P2pDownloadComplete => {
-            if event.sharing_kind == Some("ed2k") {
-                ed2k_complete(&locale, task_name)
-            } else {
-                bt_complete(&locale, task_name)
-            }
-        }
         TaskNotificationKind::Error => {
             download_failed(&locale, task_name, event.error_message.as_deref())
         }
@@ -590,59 +568,6 @@ fn development_build() -> bool {
         .is_some_and(|dir| dir.ends_with("target/debug") || dir.ends_with("target/release"))
 }
 
-/// Registers the toast identity under `HKCU\Software\Classes\AppUserModelId`.
-///
-/// Windows drops toasts from an identity it cannot resolve. The installer's
-/// Start menu shortcut normally provides it, but an install upgraded from an
-/// older product keeps that product's shortcut; the registry entry works
-/// without any shortcut.
-#[cfg(windows)]
-pub fn register_app_identity(app: &tauri::AppHandle) {
-    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-    const ICON: &[u8] = include_bytes!("../../icons/128x128.png");
-    if development_build() {
-        return;
-    }
-    let icon = match app.path().app_local_data_dir() {
-        Ok(dir) => dir.join("notification-icon.png"),
-        Err(error) => {
-            log::warn!("notification:identity-failed error={error}");
-            return;
-        }
-    };
-    let result = (|| -> std::io::Result<()> {
-        if std::fs::read(&icon).ok().as_deref() != Some(ICON) {
-            if let Some(parent) = icon.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&icon, ICON)?;
-        }
-        let path = format!(
-            "Software\\Classes\\AppUserModelId\\{}",
-            app.config().identifier
-        );
-        let (key, _) = RegKey::predef(HKEY_CURRENT_USER).create_subkey(path)?;
-        let name = app
-            .config()
-            .product_name
-            .clone()
-            .unwrap_or_else(|| "Rayburst".into());
-        key.set_value("DisplayName", &name)?;
-        key.set_value("IconUri", &icon.to_string_lossy().into_owned())?;
-        Ok(())
-    })();
-    match result {
-        Ok(()) => log::debug!("notification:identity-registered"),
-        Err(error) => log::warn!("notification:identity-failed error={error}"),
-    }
-    let access = notification_access(app);
-    if access == NotificationAccess::Allowed {
-        log::debug!("notification:access {access:?}");
-    } else {
-        log::warn!("notification:access {access:?}");
-    }
-}
-
 #[cfg(windows)]
 async fn send_platform_notification(
     app: &tauri::AppHandle,
@@ -718,16 +643,7 @@ mod tests {
             dir: "/tmp".to_string(),
             total_length: "1".to_string(),
             completed_length: "1".to_string(),
-            info_hash: None,
-            magnet_link: None,
-            sharing_time: None,
-            ed2k_link: None,
-            ed2k_hash: None,
-            is_bt: false,
-            is_ed2k: false,
-            sharing_kind: None,
             files: Vec::new(),
-            announce_list: Vec::new(),
         }
     }
 
@@ -753,44 +669,6 @@ mod tests {
             content.target,
             NotificationTarget::Open(std::path::PathBuf::from("/tmp"))
         );
-    }
-
-    #[test]
-    fn builds_localised_bt_complete_notification() {
-        let mut ev = event();
-        ev.is_bt = true;
-        ev.sharing_kind = Some("bt");
-        let content = build_task_notification(events::P2P_DOWNLOAD_COMPLETE, &ev, &cfg()).unwrap();
-        assert_eq!(content.kind, TaskNotificationKind::P2pDownloadComplete);
-        assert_eq!(content.title, "BT Download Complete");
-        assert_eq!(content.body, "Seeding: file.zip");
-    }
-
-    #[test]
-    fn builds_localised_ed2k_sharing_notification() {
-        let mut ev = event();
-        ev.is_ed2k = true;
-        ev.sharing_kind = Some("ed2k");
-        let content = build_task_notification(events::P2P_DOWNLOAD_COMPLETE, &ev, &cfg()).unwrap();
-        assert_eq!(content.kind, TaskNotificationKind::P2pDownloadComplete);
-        assert_eq!(content.title, "ED2K Download Complete");
-        assert_eq!(content.body, "Sharing: file.zip");
-    }
-
-    #[test]
-    fn builds_zh_cn_ed2k_sharing_notification() {
-        let mut ev = event();
-        ev.is_ed2k = true;
-        ev.sharing_kind = Some("ed2k");
-        let mut config = cfg();
-        config.locale = "zh-CN".to_string();
-
-        let content = build_task_notification(events::P2P_DOWNLOAD_COMPLETE, &ev, &config).unwrap();
-
-        assert_eq!(content.kind, TaskNotificationKind::P2pDownloadComplete);
-        assert_eq!(content.title, "ED2K 下载完成");
-        assert_eq!(content.body, "共享中：file.zip");
-        assert_eq!(content.locale, "zh-CN");
     }
 
     #[test]
@@ -827,22 +705,6 @@ mod tests {
         assert_eq!(content.title, "Download Started");
         assert_eq!(content.body, "Downloading: file.zip");
         assert_eq!(content.locale, "en-US");
-    }
-
-    #[test]
-    fn builds_localised_batch_start_notification() {
-        let content = build_task_start_notification(
-            &[
-                "file.zip".to_string(),
-                "b.iso".to_string(),
-                "c.torrent".to_string(),
-            ],
-            &cfg(),
-        )
-        .unwrap();
-        assert_eq!(content.kind, TaskNotificationKind::Start);
-        assert_eq!(content.title, "Download Started");
-        assert_eq!(content.body, "Downloading: file.zip and 2 other task(s)");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
-/** @fileoverview Downloads preference tab: paths, speed and concurrency, retries, media, task actions, sharing, automation, cleanup. */
+/** @fileoverview Downloads preference tab: paths, speed and concurrency, retries, media, task actions, automation, cleanup. */
 import { ref, computed, onMounted } from 'vue'
 import { speedUnitOptions as speedUnits } from '@shared/utils/format'
 import { useI18n } from 'vue-i18n'
@@ -39,8 +39,6 @@ import {
   NText,
   NCollapseTransition,
   NIcon,
-  NRadioButton,
-  NRadioGroup,
 } from 'naive-ui'
 import PreferenceActionRegistration from './PreferenceActionRegistration.vue'
 import PreferenceHintLabel from './PreferenceHintLabel.vue'
@@ -102,8 +100,6 @@ const { form, isDirty, handleSave, handleReset, resetSnapshot, commitInstant } =
 })
 
 // ── Speed limit ─────────────────────────────────────────────────────
-const uploadSpeedValue = ref(0)
-const uploadUnit = ref('K')
 const downloadSpeedValue = ref(0)
 const downloadUnit = ref('K')
 const speedUnitOptions = computed(speedUnits)
@@ -164,8 +160,6 @@ const numericFieldsValid = computed(
       streamMaxConnections: form.value.streamMaxConnections,
       maxTries: form.value.maxTries,
       retryWait: form.value.retryWait,
-      shareRatio: form.value.shareRatio,
-      shareTime: form.value.shareTime,
       completedRecordRetentionDays: form.value.completedRecordRetentionDays,
     }) &&
     (completedRecordRetentionSelectValue.value !== -1 ||
@@ -183,18 +177,9 @@ function buildSpeedLimit(value: number, unit: string): string {
   return value > 0 ? `${value}${unit}` : '0'
 }
 
-function handleUploadUnitChange(val: string) {
-  uploadUnit.value = val
-  form.value.maxOverallUploadLimit = buildSpeedLimit(uploadSpeedValue.value, val)
-}
 function handleDownloadUnitChange(val: string) {
   downloadUnit.value = val
   form.value.maxOverallDownloadLimit = buildSpeedLimit(downloadSpeedValue.value, val)
-}
-function handleUploadValueChange(val: number | null) {
-  const v = val || 0
-  uploadSpeedValue.value = v
-  form.value.maxOverallUploadLimit = buildSpeedLimit(v, uploadUnit.value)
 }
 function handleDownloadValueChange(val: number | null) {
   const v = val || 0
@@ -259,9 +244,6 @@ function loadForm() {
   completedRecordRetentionMode.value = getCompletedRecordRetentionSelectValue(
     Number(form.value.completedRecordRetentionDays),
   )
-  const ul = parseSpeedLimit(form.value.maxOverallUploadLimit)
-  uploadSpeedValue.value = ul.num
-  uploadUnit.value = ul.unit
   const dl = parseSpeedLimit(form.value.maxOverallDownloadLimit)
   downloadSpeedValue.value = dl.num
   downloadUnit.value = dl.unit
@@ -399,24 +381,6 @@ onMounted(async () => {
           </NFormItem>
         </NCollapseTransition>
         <div>
-          <NFormItem :label="t('preferences.transfer-speed-upload')">
-            <NInputGroup>
-              <NInputNumber
-                :value="uploadSpeedValue"
-                :min="0"
-                :max="65535"
-                :step="1"
-                class="pref-port"
-                @update:value="handleUploadValueChange"
-              />
-              <NSelect
-                :value="uploadUnit"
-                :options="speedUnitOptions"
-                class="pref-control-auto pref-control-compact"
-                @update:value="handleUploadUnitChange"
-              />
-            </NInputGroup>
-          </NFormItem>
           <NFormItem :label="t('preferences.transfer-speed-download')">
             <NInputGroup>
               <NInputNumber
@@ -494,43 +458,6 @@ onMounted(async () => {
           </NFormItem>
         </NCollapseTransition>
 
-        <!-- P2P sharing -->
-        <NDivider title-placement="left">{{ t('preferences.p2p-sharing-section') }}</NDivider>
-        <NFormItem :label="t('preferences.sharing-mode')">
-          <NRadioGroup v-model:value="form.sharingMode" size="small">
-            <NRadioButton value="stop-by-condition">
-              {{ t('preferences.sharing-mode-stop-by-condition') }}
-            </NRadioButton>
-            <NRadioButton value="manual-stop">{{ t('preferences.sharing-mode-manual-stop') }}</NRadioButton>
-          </NRadioGroup>
-        </NFormItem>
-        <NCollapseTransition :show="form.sharingMode === 'stop-by-condition'" class="collapse-indent">
-          <NFormItem :label="t('preferences.share-ratio')" v-bind="configFieldProps('shareRatio', form.shareRatio)">
-            <NInputNumber
-              v-model:value="form.shareRatio"
-              :min="constraint('shareRatio').min"
-              :max="constraint('shareRatio').max"
-              :step="0.1"
-              class="pref-number"
-            />
-          </NFormItem>
-          <NFormItem
-            :label="t('preferences.share-time') + ' (' + t('preferences.share-time-unit') + ')'"
-            v-bind="configFieldProps('shareTime', form.shareTime)"
-          >
-            <NInputNumber
-              v-model:value="form.shareTime"
-              :min="constraint('shareTime').min"
-              :max="constraint('shareTime').max"
-              class="pref-number"
-            />
-          </NFormItem>
-        </NCollapseTransition>
-        <NCollapseTransition :show="form.sharingMode === 'manual-stop'" class="collapse-indent">
-          <NFormItem label=" ">
-            <NText depth="3">{{ t('preferences.sharing-mode-manual-stop-tips') }}</NText>
-          </NFormItem>
-        </NCollapseTransition>
         <!-- Automation -->
         <NDivider title-placement="left">{{ t('preferences.automation-section') }}</NDivider>
         <NFormItem :label="t('preferences.shutdown-when-complete')">
@@ -567,9 +494,6 @@ onMounted(async () => {
 
         <!-- Auto Cleanup -->
         <NDivider title-placement="left">{{ t('preferences.auto-cleanup') }}</NDivider>
-        <NFormItem :label="t('preferences.delete-torrent-after-complete')">
-          <NSwitch v-model:value="form.deleteTorrentAfterComplete" />
-        </NFormItem>
         <NFormItem :label="t('preferences.auto-delete-stale-records')">
           <NSwitch v-model:value="form.autoDeleteStaleRecords" />
         </NFormItem>

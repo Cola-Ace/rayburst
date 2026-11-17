@@ -6,17 +6,11 @@ import { TASK_STATUS } from '@shared/constants'
 import {
   bytesToSize,
   calcProgress,
-  checkTaskIsSharing,
   getTaskCompletedLength,
   getTaskName,
-  getSharingStatusLabelKey,
-  getTaskSharingState,
-  isBtMetadataTask,
   timeFormat,
   timeRemaining,
 } from '@shared/utils'
-import { buildTaskTransferSummary } from '@/composables/useTaskDetailSummary'
-import { getBtLifecycleState } from '@/composables/useBtLifecycle'
 import type { Aria2Task } from '@shared/types'
 
 export interface TaskCardStatusBadge {
@@ -27,10 +21,6 @@ export interface TaskCardStatusBadge {
 
 interface TaskCardModel {
   taskFullName: ComputedRef<string>
-  sharingKind: ComputedRef<'bt' | 'ed2k' | null>
-  isSharing: ComputedRef<boolean>
-  sharingLabel: ComputedRef<string>
-  isMetadataFetching: ComputedRef<boolean>
   statusBadge: ComputedRef<TaskCardStatusBadge | null>
   taskStatus: ComputedRef<string>
   isActive: ComputedRef<boolean>
@@ -41,24 +31,15 @@ interface TaskCardModel {
   totalSize: ComputedRef<string>
   hasSizeInfo: ComputedRef<boolean>
   downloadSpeed: ComputedRef<string>
-  uploadSpeed: ComputedRef<string>
   remaining: ComputedRef<number>
   remainingText: ComputedRef<string>
-  transferSummary: ComputedRef<ReturnType<typeof buildTaskTransferSummary>>
 }
 
 export function useTaskCardModel(task: ComputedRef<Aria2Task>): TaskCardModel {
   const { t } = useI18n()
 
   const taskFullName = computed(() => getTaskName(task.value, { defaultName: t('task.get-task-name') || 'Unknown' }))
-  const btLifecycle = computed(() => getBtLifecycleState(task.value))
-  const sharingState = computed(() => getTaskSharingState(task.value))
-  const sharingKind = computed(() => sharingState.value?.kind ?? null)
-  const isSharing = computed(() => checkTaskIsSharing(task.value))
-  const sharingLabel = computed(() => (sharingState.value ? t(getSharingStatusLabelKey(sharingState.value)) : ''))
-  // A queued magnet waits for a slot before it fetches anything.
-  const isMetadataFetching = computed(() => task.value.status === TASK_STATUS.ACTIVE && isBtMetadataTask(task.value))
-  const taskStatus = computed(() => (isSharing.value ? TASK_STATUS.SHARING : task.value.status))
+  const taskStatus = computed(() => task.value.status)
   const statusBadge = computed<TaskCardStatusBadge | null>(() => {
     if (task.value.media) {
       const media = task.value.media
@@ -68,48 +49,6 @@ export function useTaskCardModel(task: ComputedRef<Aria2Task>): TaskCardModel {
         tone: task.value.status === 'error' ? 'error' : task.value.status === 'complete' ? 'success' : 'waiting',
       }
     }
-    if (btLifecycle.value === 'selection') {
-      return {
-        key: 'bt-file-selection',
-        label: t('task.awaiting-file-selection'),
-        tone: 'waiting',
-      }
-    }
-    if (btLifecycle.value === 'recovering') {
-      return {
-        key: 'bt-recovering',
-        label: t('task.bt-recovering'),
-        tone: 'waiting',
-      }
-    }
-    if (btLifecycle.value === 'error') {
-      return {
-        key: 'bt-error',
-        label: t('task.task-error'),
-        tone: 'error',
-      }
-    }
-    if (sharingState.value?.phase === 'paused') {
-      return {
-        key: 'sharing-paused',
-        label: sharingLabel.value,
-        tone: 'muted',
-      }
-    }
-    if (isSharing.value) {
-      return {
-        key: 'sharing',
-        label: sharingLabel.value,
-        tone: 'success',
-      }
-    }
-    if (isMetadataFetching.value)
-      return {
-        key: 'bt-metadata-fetching',
-        label: t('task.bt-metadata-fetching') || 'Fetching torrent',
-        tone: 'waiting',
-      }
-
     switch (task.value.status) {
       case TASK_STATUS.WAITING:
         return { key: TASK_STATUS.WAITING, label: t('task.status-waiting') || 'Queued', tone: 'waiting' }
@@ -150,8 +89,6 @@ export function useTaskCardModel(task: ComputedRef<Aria2Task>): TaskCardModel {
       : completedLengthValue.value > 0 || displayedTotalLength.value > 0,
   )
   const downloadSpeed = computed(() => bytesToSize(task.value.downloadSpeed))
-  const uploadSpeed = computed(() => bytesToSize(task.value.uploadSpeed))
-  const transferSummary = computed(() => buildTaskTransferSummary(task.value))
   const remaining = computed(() => {
     if (!isActive.value || task.value.media) return 0
     return timeRemaining(displayedTotalLength.value, completedLengthValue.value, Number(task.value.downloadSpeed))
@@ -171,10 +108,6 @@ export function useTaskCardModel(task: ComputedRef<Aria2Task>): TaskCardModel {
 
   return {
     taskFullName,
-    sharingKind,
-    isSharing,
-    sharingLabel,
-    isMetadataFetching,
     statusBadge,
     taskStatus,
     isActive,
@@ -185,9 +118,7 @@ export function useTaskCardModel(task: ComputedRef<Aria2Task>): TaskCardModel {
     totalSize,
     hasSizeInfo,
     downloadSpeed,
-    uploadSpeed,
     remaining,
     remainingText,
-    transferSummary,
   }
 }

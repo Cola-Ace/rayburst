@@ -15,9 +15,7 @@ const visible = ref(false)
 const name = ref('')
 const busy = ref(false)
 const error = ref('')
-const available = computed(
-  () => props.task.status === 'complete' && props.task.seeder !== 'true' && props.task.files?.length === 1,
-)
+const available = computed(() => props.task.status === 'complete' && props.task.files?.length === 1)
 function open(show: boolean) {
   if (busy.value) return
   visible.value = show

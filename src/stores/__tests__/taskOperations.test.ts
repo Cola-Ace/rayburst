@@ -18,7 +18,6 @@ import { createTaskOperations } from '../task/operations'
 const mockAddRecord = vi.fn().mockResolvedValue(undefined)
 const mockRemoveRecord = vi.fn().mockResolvedValue(undefined)
 const mockClearRecords = vi.fn().mockResolvedValue(undefined)
-const mockRemoveByInfoHash = vi.fn().mockResolvedValue(undefined)
 const mockRemoveBirthRecords = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@/stores/history', () => ({
@@ -26,31 +25,25 @@ vi.mock('@/stores/history', () => ({
     addRecord: mockAddRecord,
     removeRecord: mockRemoveRecord,
     clearRecords: mockClearRecords,
-    removeByInfoHash: mockRemoveByInfoHash,
     removeBirthRecords: mockRemoveBirthRecords,
   }),
 }))
 
-// ── Mock P2P completion record ──────────────────────────────────────
 // ── Helpers ────────────────────────────────────────────────────────
 
 function createMockApi(): TaskApi {
   const api = {
     fetchTaskList: vi.fn().mockResolvedValue([]),
     fetchTaskItem: vi.fn().mockResolvedValue({}),
-    fetchTaskItemWithPeers: vi.fn().mockResolvedValue({}),
     fetchActiveTaskList: vi.fn().mockResolvedValue([]),
     addUri: vi.fn().mockResolvedValue([]),
     addUriAtomic: vi.fn().mockResolvedValue(''),
-    addTorrent: vi.fn().mockResolvedValue(''),
     getOption: vi.fn().mockResolvedValue({}),
     changeOption: vi.fn().mockResolvedValue(undefined),
     getFiles: vi.fn().mockResolvedValue([]),
     removeTask: vi.fn().mockResolvedValue('OK'),
     deleteTask: vi.fn().mockResolvedValue(undefined),
     batchDeleteTasks: vi.fn().mockResolvedValue({ succeeded: ['a', 'b'], failed: [] }),
-    finishSharing: vi.fn().mockResolvedValue(undefined),
-    batchFinishSharing: vi.fn().mockResolvedValue({ succeeded: ['bt', 'ed2k'], failed: [] }),
     forcePauseTask: vi.fn().mockResolvedValue('OK'),
     forcePauseAll: vi.fn().mockResolvedValue('OK'),
     pauseTask: vi.fn().mockResolvedValue('OK'),
@@ -62,7 +55,7 @@ function createMockApi(): TaskApi {
     saveSession: vi.fn().mockResolvedValue('OK'),
     // The pump's snapshot reads the same engine list.
     refreshTasks: vi.fn(async () => ({
-      stat: { downloadSpeed: 0, uploadSpeed: 0, numActive: 0, numWaiting: 0, numStopped: 0, numStoppedTotal: 0 },
+      stat: { downloadSpeed: 0, numActive: 0, numWaiting: 0, numStopped: 0, numStoppedTotal: 0 },
       tasks: await api.fetchTaskList({ type: 'all' }),
     })),
   }
@@ -76,7 +69,7 @@ function makeTask(overrides: Record<string, unknown> = {}): Aria2Task {
     totalLength: '1024',
     completedLength: '512',
     downloadSpeed: '100',
-    uploadSpeed: '0',
+
     connections: '1',
     dir: '/downloads',
     files: [],
@@ -133,38 +126,6 @@ describe('removeTask', () => {
 // ═══════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════
-describe('finishSharing', () => {
-  it('finishes seeding without deleting the completed record', async () => {
-    const api = createMockApi()
-    const deps = createDeps(api)
-    const ops = createTaskOperations(deps)
-    const task = makeTask({ gid: 'seed-1', seeder: 'true', bittorrent: { state: 'seeding' } })
-
-    await ops.finishSharing(task)
-
-    expect(api.finishSharing).toHaveBeenCalledWith({ gid: 'seed-1' })
-    expect(api.deleteTask).not.toHaveBeenCalled()
-    expect(deps.setTaskRemoving).not.toHaveBeenCalled()
-    expect(deps.fetchList).toHaveBeenCalledOnce()
-    expect(api.saveSession).not.toHaveBeenCalled()
-  })
-
-  it('finishes multiple BT and ED2K sharing tasks in one native call', async () => {
-    const api = createMockApi()
-    const deps = createDeps(api)
-    const ops = createTaskOperations(deps)
-
-    await expect(ops.finishSharingTasks(['bt', 'ed2k'])).resolves.toEqual({
-      succeeded: ['bt', 'ed2k'],
-      failed: [],
-    })
-
-    expect(api.batchFinishSharing).toHaveBeenCalledWith({ gids: ['bt', 'ed2k'] })
-    expect(deps.fetchList).toHaveBeenCalledOnce()
-    expect(api.saveSession).not.toHaveBeenCalled()
-  })
-})
-
 // pauseTask
 // ═══════════════════════════════════════════════════════════════════
 
@@ -178,13 +139,6 @@ describe('pauseTask', () => {
     api = createMockApi()
     deps = createDeps(api)
     ops = createTaskOperations(deps)
-  })
-
-  it('uses forcePauseTask for BitTorrent tasks', async () => {
-    const btTask = makeTask({ bittorrent: { info: { name: 'ubuntu.torrent' } } } as Partial<Aria2Task>)
-    await ops.pauseTask(btTask)
-    expect(api.forcePauseTask).toHaveBeenCalledWith({ gid: btTask.gid })
-    expect(api.pauseTask).not.toHaveBeenCalled()
   })
 
   it('uses pauseTask for non-BT tasks', async () => {
@@ -234,19 +188,6 @@ describe('resumeTask', () => {
     expect(deps.fetchList).toHaveBeenCalledOnce()
     expect(api.saveSession).not.toHaveBeenCalled()
   })
-
-  it('keeps a resolved magnet paused until file selection is applied', async () => {
-    const task = makeTask({
-      gid: 'magnet-download',
-      status: TASK_STATUS.PAUSED,
-      bittorrent: { info: { name: 'Archive' }, state: 'paused', fileSelectionState: 'awaiting' },
-      files: [{ index: '1', path: '/downloads/file.bin', length: '1024' }],
-    })
-
-    await expect(ops.resumeTask(task)).resolves.toBe(false)
-    expect(api.getOption).not.toHaveBeenCalled()
-    expect(api.resumeTask).not.toHaveBeenCalled()
-  })
 })
 
 // ═══════════════════════════════════════════════════════════════════
@@ -267,23 +208,6 @@ describe('pauseAllTask', () => {
     expect(api.forcePauseTask).not.toHaveBeenCalled()
     expect(deps.fetchList).toHaveBeenCalledOnce()
     expect(api.saveSession).not.toHaveBeenCalled()
-  })
-
-  it('keeps sharing tasks inside the native pause-all scope', async () => {
-    const api = createMockApi()
-    const deps = createDeps(api)
-    deps.taskList.value = [
-      makeTask({ gid: 'dl-1', status: TASK_STATUS.ACTIVE }),
-      makeTask({
-        gid: 'seed-1',
-        status: TASK_STATUS.ACTIVE,
-        bittorrent: { info: { name: 'movie.mkv' } },
-        seeder: 'true',
-      }),
-    ] as Aria2Task[]
-    const ops = createTaskOperations(deps)
-    await ops.pauseAllTask()
-    expect(api.forcePauseAll).toHaveBeenCalledOnce()
   })
 })
 
@@ -347,18 +271,6 @@ describe('toggleTask', () => {
     const task = makeTask({ status: TASK_STATUS.ERROR })
     ops.toggleTask(task)
     expect(api.pauseTask).not.toHaveBeenCalled()
-    expect(api.resumeTask).not.toHaveBeenCalled()
-  })
-
-  it('pauses an active seeding task', async () => {
-    const task = makeTask({
-      status: TASK_STATUS.ACTIVE,
-      bittorrent: { info: { name: 'movie.mkv' } },
-      seeder: 'true',
-    })
-    const result = ops.toggleTask(task)
-    await result
-    expect(api.forcePauseTask).toHaveBeenCalledWith({ gid: task.gid })
     expect(api.resumeTask).not.toHaveBeenCalled()
   })
 })
@@ -471,20 +383,6 @@ describe('hasActiveTasks', () => {
   it('returns true when waiting tasks exist', async () => {
     const api = createMockApi()
     ;(api.fetchTaskList as Mock).mockResolvedValueOnce([makeTask({ status: TASK_STATUS.WAITING })])
-    const deps = createDeps(api)
-    const ops = createTaskOperations(deps)
-    expect(await ops.hasActiveTasks()).toBe(true)
-  })
-
-  it('returns true when only seeding tasks exist', async () => {
-    const api = createMockApi()
-    ;(api.fetchTaskList as Mock).mockResolvedValueOnce([
-      makeTask({
-        status: TASK_STATUS.ACTIVE,
-        bittorrent: { info: { name: 'seed' } },
-        seeder: 'true',
-      }),
-    ])
     const deps = createDeps(api)
     const ops = createTaskOperations(deps)
     expect(await ops.hasActiveTasks()).toBe(true)

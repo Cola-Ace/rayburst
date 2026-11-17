@@ -13,7 +13,7 @@ The advanced source mode can force HLS/DASH or save the original resource.
 
 The Downloads preferences define the default container and whether new finite
 presentations require content selection. With selection enabled, new presentations
-pause after discovery and enter the selection queue used by BitTorrent. With it
+pause after discovery and enter the media selection queue. With it
 disabled, the desktop resolves the native probe and continues finite sources with
 `changeOption` and `unpause`, while keeping live recording behind confirmation.
 The engine receives only its existing boolean pause option. Preferences apply to
@@ -83,13 +83,12 @@ the other packaged targets.
 
 ## Selection UI ownership
 
-BitTorrent and media have independent dialogs and submission paths. The selection
+Media has its own dialog and submission path. The selection
 queue stores only task identifiers, dialog kinds, and prompting state. Task
 snapshots determine readiness outside the queue. The host waits for `after-leave`
 before presenting the next dialog; each dialog retains its content through exit.
 The native media dialog owns track loading, output options and same-GID retry.
-BitTorrent retains its existing file selector and category routing. Both use
-Naive UI modal primitives and the application's shared motion styles.
+The dialog uses Naive UI modal primitives and the application's shared motion styles.
 
 Modal instances stay mounted with `show=false` until selected, allowing Naive UI's
 native enter transition to run on the first opening. Loading, errors and forms

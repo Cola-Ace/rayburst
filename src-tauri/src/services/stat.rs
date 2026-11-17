@@ -15,7 +15,6 @@ use tauri::Manager;
 #[serde(rename_all = "camelCase")]
 pub struct StatUpdate {
     pub download_speed: u64,
-    pub upload_speed: u64,
     pub num_active: u64,
     pub num_waiting: u64,
     pub num_stopped: u64,
@@ -42,28 +41,20 @@ fn compact_size(bytes: u64) -> String {
     }
 }
 
-fn tray_title_for_speed(tray_speedometer: bool, download_speed: u64, upload_speed: u64) -> String {
-    if !tray_speedometer || (download_speed == 0 && upload_speed == 0) {
+fn tray_title_for_speed(tray_speedometer: bool, download_speed: u64) -> String {
+    if !tray_speedometer || download_speed == 0 {
         return String::new();
     }
 
-    if download_speed > 0 {
-        format!("↓{}", compact_size(download_speed))
-    } else {
-        format!("↑{}", compact_size(upload_speed))
-    }
+    format!("↓{}", compact_size(download_speed))
 }
 
 /// Tooltip of the tray icon: the speeds while anything is active.
-fn tray_tooltip(num_active: u64, download_speed: u64, upload_speed: u64) -> String {
+fn tray_tooltip(num_active: u64, download_speed: u64) -> String {
     if num_active == 0 {
         return "Rayburst".into();
     }
-    format!(
-        "Rayburst\n↓ {}/s  ↑ {}/s",
-        compact_size(download_speed),
-        compact_size(upload_speed)
-    )
+    format!("Rayburst\n↓ {}/s", compact_size(download_speed))
 }
 
 fn tray_title_needs_update(last_title: &Option<String>, next_title: &str) -> bool {
@@ -80,16 +71,12 @@ fn completed_length(task: &crate::aria2::types::Aria2Task) -> u64 {
 
 /// Use task fractions for mixed media/file work; their raw units cannot be summed.
 pub(crate) fn task_progress(tasks: &[crate::aria2::types::Aria2Task]) -> Option<u64> {
-    let tasks: Vec<_> = tasks
-        .iter()
-        .filter(|task| task.seeder.as_deref() != Some("true"))
-        .collect();
     if tasks.is_empty() {
         return None;
     }
     if tasks.iter().any(|task| task.media.is_some()) {
         let mut sum = 0.0;
-        for task in &tasks {
+        for task in tasks {
             let fraction = if let Some(media) = &task.media {
                 if media.live == "true" || media.state == "finalizing" {
                     return None;
@@ -113,7 +100,7 @@ pub(crate) fn task_progress(tasks: &[crate::aria2::types::Aria2Task]) -> Option<
         .iter()
         .map(|task| parse_length(Some(&task.total_length)))
         .sum();
-    let completed: u64 = tasks.iter().map(|task| completed_length(task)).sum();
+    let completed: u64 = tasks.iter().map(completed_length).sum();
     (total > 0).then(|| ((completed as f64 / total as f64).clamp(0.0, 1.0) * 100.0) as u64)
 }
 
@@ -392,8 +379,7 @@ impl StatEffects {
         self.keep_awake(cfg.keep_awake && stat.num_active > 0, stat.num_active)
             .await;
 
-        let next_title =
-            tray_title_for_speed(cfg.tray_speedometer, stat.download_speed, stat.upload_speed);
+        let next_title = tray_title_for_speed(cfg.tray_speedometer, stat.download_speed);
         if tray_title_needs_update(&self.last_tray_title, &next_title) {
             if let Err(error) = crate::tray::set_title(app, &next_title) {
                 log::debug!("tray:title-update-failed error={error}");
@@ -408,7 +394,7 @@ impl StatEffects {
             self.tray_visible = Some(cfg.show_tray_icon);
         }
         let downloading = stat.num_active > 0;
-        let tooltip = tray_tooltip(stat.num_active, stat.download_speed, stat.upload_speed);
+        let tooltip = tray_tooltip(stat.num_active, stat.download_speed);
         let icon_size = crate::tray::icon_size();
         if self.tray_active != Some(downloading)
             || self.last_tray_tooltip.as_deref() != Some(&tooltip)
@@ -445,7 +431,7 @@ impl StatEffects {
         #[cfg(target_os = "windows")]
         if let Some(window) = app.get_webview_window("main") {
             use tauri::window::{ProgressBarState, ProgressBarStatus};
-            // Without a measurable download (seeding only, unknown sizes) the
+            // Without a measurable download (unknown sizes) the
             // taskbar stays plain rather than running the marquee animation.
             let progress = (cfg.show_progress_bar && stat.num_active > 0)
                 .then(|| task_progress(active))
@@ -512,11 +498,8 @@ mod tests {
 
     #[test]
     fn tray_tooltip_shows_speeds_only_while_active() {
-        assert_eq!(tray_tooltip(0, 0, 0), "Rayburst");
-        assert_eq!(
-            tray_tooltip(2, 1_572_864, 1024),
-            "Rayburst\n↓ 1.5M/s  ↑ 1K/s"
-        );
+        assert_eq!(tray_tooltip(0, 0), "Rayburst");
+        assert_eq!(tray_tooltip(2, 1_572_864), "Rayburst\n↓ 1.5M/s");
     }
 
     // ── compact_size ────────────────────────────────────────────────
@@ -550,7 +533,7 @@ mod tests {
 
     #[test]
     fn tray_title_is_empty_when_speedometer_is_disabled() {
-        assert_eq!(tray_title_for_speed(false, 1_048_576, 0), "");
+        assert_eq!(tray_title_for_speed(false, 1_048_576), "");
     }
 
     #[test]
@@ -575,11 +558,19 @@ mod tests {
                 length: "1024".to_string(),
                 completed_length: "1024".to_string(),
                 selected: "true".to_string(),
-                priority: None,
                 uris: vec![],
             }],
             ..Aria2Task::default()
         }
+    }
+
+    #[test]
+    fn progress_uses_completed_bytes_and_waits_for_known_sizes() {
+        let mut task = make_task("file", "active");
+        task.completed_length = "512".into();
+        assert_eq!(task_progress(&[task.clone()]), Some(50));
+        task.total_length = "0".into();
+        assert_eq!(task_progress(&[task]), None);
     }
 
     // ── StatUpdate serialization ────────────────────────────────────
@@ -588,7 +579,6 @@ mod tests {
     fn stat_update_serializes_to_camel_case() {
         let update = StatUpdate {
             download_speed: 1024,
-            upload_speed: 512,
             num_active: 3,
             num_waiting: 1,
             num_stopped: 5,
@@ -602,14 +592,6 @@ mod tests {
         assert!(json.get("download_speed").is_none());
     }
 
-    #[test]
-    fn completed_length_uses_aria2_completed_length() {
-        let mut task = make_task("ed2k", "active");
-        task.total_length = "1000".to_string();
-        task.completed_length = "200".to_string();
-
-        assert_eq!(completed_length(&task), 200);
-    }
     #[test]
     fn media_progress_uses_duration_and_keeps_live_or_finalizing_indeterminate() {
         let mut task = crate::aria2::types::Aria2Task {

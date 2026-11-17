@@ -6,7 +6,7 @@
  */
 import { basename, dirname } from '@tauri-apps/api/path'
 import { TASK_STATUS } from '@shared/constants'
-import { checkTaskIsBT, getRestartDescriptors } from '@shared/utils'
+import { getRestartDescriptors } from '@shared/utils'
 import { logger } from '@shared/logger'
 import { changeKeysToCamelCase } from '@shared/utils/config'
 import { engineOptionKeys } from '@shared/configKeys'
@@ -30,7 +30,6 @@ export interface TaskResubmissionHistoryApi {
 const RESUBMITTABLE_KEYS = new Set(
   Object.keys(changeKeysToCamelCase(Object.fromEntries(engineOptionKeys.map((key) => [key, true])))),
 )
-RESUBMITTABLE_KEYS.delete('pauseMetadata')
 RESUBMITTABLE_KEYS.delete('gid')
 
 const SUBMISSION_SETTLE_ATTEMPTS = 6
@@ -75,14 +74,10 @@ async function restoreOutputOptions(options: Record<string, string>, path?: stri
   return result
 }
 
-function applyModeOptions(options: Record<string, string>, mode: TaskResubmissionMode, isBt: boolean): void {
-  options.continue = mode === 'retry' || isBt ? 'true' : 'false'
+function applyModeOptions(options: Record<string, string>, mode: TaskResubmissionMode): void {
+  options.continue = mode === 'retry' ? 'true' : 'false'
   options.allowOverwrite = 'false'
-  options.autoFileRenaming = mode === 'redownload' && !isBt ? 'true' : 'false'
-
-  if (!isBt) return
-  options.checkIntegrity = options.checkIntegrity ?? 'true'
-  options.forceSave = options.forceSave ?? 'true'
+  options.autoFileRenaming = mode === 'redownload' ? 'true' : 'false'
 }
 
 async function assertSubmissionAccepted(api: TaskResubmissionApi, gid: string): Promise<void> {
@@ -136,13 +131,12 @@ export async function resubmitTask(
   let descriptors = getRestartDescriptors(task)
   if (descriptors.length === 0) throw new Error('Cannot resubmit: no download URIs found for this task')
   if (source) {
-    if (descriptors.length !== 1 || checkTaskIsBT(task)) throw new Error('Only a single download can change its source')
+    if (descriptors.length !== 1) throw new Error('Only a single download can change its source')
     descriptors = [{ ...descriptors[0], uris: [source] }]
   }
 
-  const isBt = checkTaskIsBT(task)
   const options = await readResubmissionOptions(task, api)
-  applyModeOptions(options, mode, isBt)
+  applyModeOptions(options, mode)
   if (task.media) {
     if (mode !== 'redownload') throw new Error('Media retries require the native retry operation')
     options.mediaPauseAfterProbe = 'true'
@@ -155,9 +149,10 @@ export async function resubmitTask(
   const createdGids: string[] = []
   try {
     for (const { uris, path } of descriptors) {
-      const submissionOptions = isBt
-        ? options
-        : await restoreOutputOptions(options, path || (descriptors.length === 1 ? options.out : undefined))
+      const submissionOptions = await restoreOutputOptions(
+        options,
+        path || (descriptors.length === 1 ? options.out : undefined),
+      )
       if (task.media) {
         const format = options.mediaFormat === 'mkv' ? 'mkv' : 'mp4'
         const name = submissionOptions.out?.replace(/\.[^.]*$/, '') || 'media'

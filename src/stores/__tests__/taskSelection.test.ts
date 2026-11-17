@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useTaskSelectionStore, type SelectionRequest } from '../taskSelection'
 const media: SelectionRequest = { kind: 'media', gid: 'a' }
-const bt: SelectionRequest = { kind: 'bt', gid: 'b' }
+const second: SelectionRequest = { kind: 'media', gid: 'b' }
 
 describe('selection queue', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -21,22 +21,22 @@ describe('selection queue', () => {
   })
   it('preserves manual and restored selection policies', () => {
     const store = useTaskSelectionStore()
-    store.register(bt.gid, false)
-    store.reconcile([bt, media], [bt, media])
+    store.register(second.gid, false)
+    store.reconcile([second, media], [second, media])
     expect(store.pending).toHaveLength(2)
     expect(store.queue).toEqual([])
-    store.request(bt)
+    store.request(second)
     store.present()
-    expect(store.current).toEqual(bt)
+    expect(store.current).toEqual(second)
   })
   it('retains the active request until the closing animation completes', () => {
     const store = useTaskSelectionStore()
-    store.request(bt)
+    store.request(second)
     store.request(media)
     store.present()
     store.close()
     store.present()
-    expect(store.current).toEqual(bt)
+    expect(store.current).toEqual(second)
     expect(store.visible).toBe(false)
     store.afterLeave()
     store.present()
@@ -59,7 +59,7 @@ describe('selection queue', () => {
   it('closes invalid requests and removes deleted queued tasks', () => {
     const store = useTaskSelectionStore()
     store.request(media)
-    store.request(bt)
+    store.request(second)
     store.present()
     store.reconcile([], [])
     expect(store.phase).toBe('closing')
@@ -68,12 +68,12 @@ describe('selection queue', () => {
   })
   it('clears registration and pending state after deletion', () => {
     const store = useTaskSelectionStore()
-    store.register(bt.gid, true)
-    store.reconcile([bt], [bt])
-    store.forget([bt.gid])
+    store.register(second.gid, true)
+    store.reconcile([second], [second])
+    store.forget([second.gid])
     expect(store.pending).toEqual([])
     expect(store.queue).toEqual([])
-    store.reconcile([bt], [bt])
+    store.reconcile([second], [second])
     expect(store.queue).toEqual([])
   })
 })

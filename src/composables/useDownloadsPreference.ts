@@ -19,16 +19,12 @@ export interface DownloadsForm {
   fileCategories: FileCategory[]
   maxConcurrentDownloads: number
   streamMaxConnections: number
-  sharingMode: 'stop-by-condition' | 'manual-stop'
-  shareRatio: number
-  shareTime: number
   maxTries: number
   retryWait: number
   remoteTime: boolean
   fileAllocation: string
   incompleteSuffix: AppConfig['incompleteSuffix']
   maxOverallDownloadLimit: string
-  maxOverallUploadLimit: string
   speedScheduleEnabled: boolean
   speedScheduleFrom: string
   speedScheduleTo: string
@@ -43,7 +39,6 @@ export interface DownloadsForm {
   keepAwake: boolean
   postDownloadProgram: string
   postDownloadArguments: string
-  deleteTorrentAfterComplete: boolean
   autoDeleteStaleRecords: boolean
   clearCompletedOnExit: boolean
   completedRecordRetentionDays: number
@@ -67,16 +62,12 @@ export function buildDownloadsForm(config: AppConfig, defaultDir: string = ''): 
         : buildDefaultCategories(),
     maxConcurrentDownloads: config.maxConcurrentDownloads ?? D.maxConcurrentDownloads,
     streamMaxConnections: config.streamMaxConnections ?? D.streamMaxConnections,
-    sharingMode: (config.keepSharing ?? D.keepSharing) ? 'manual-stop' : 'stop-by-condition',
-    shareRatio: config.shareRatio ?? D.shareRatio,
-    shareTime: config.shareTime ?? D.shareTime,
     maxTries: config.maxTries ?? D.maxTries,
     retryWait: config.retryWait ?? D.retryWait,
     remoteTime: config.remoteTime ?? D.remoteTime,
     fileAllocation: config.fileAllocation ?? D.fileAllocation,
     incompleteSuffix: config.incompleteSuffix ?? D.incompleteSuffix,
     maxOverallDownloadLimit: String(config.maxOverallDownloadLimit ?? D.maxOverallDownloadLimit),
-    maxOverallUploadLimit: String(config.maxOverallUploadLimit ?? D.maxOverallUploadLimit),
     speedScheduleEnabled: config.speedScheduleEnabled ?? D.speedScheduleEnabled,
     speedScheduleFrom: config.speedScheduleFrom ?? D.speedScheduleFrom,
     speedScheduleTo: config.speedScheduleTo ?? D.speedScheduleTo,
@@ -91,7 +82,6 @@ export function buildDownloadsForm(config: AppConfig, defaultDir: string = ''): 
     keepAwake: config.keepAwake ?? D.keepAwake,
     postDownloadProgram: config.postDownloadProgram ?? D.postDownloadProgram,
     postDownloadArguments: config.postDownloadArguments ?? D.postDownloadArguments,
-    deleteTorrentAfterComplete: config.deleteTorrentAfterComplete ?? false,
     autoDeleteStaleRecords: config.autoDeleteStaleRecords ?? false,
     clearCompletedOnExit: config.clearCompletedOnExit ?? false,
     completedRecordRetentionDays: config.completedRecordRetentionDays ?? D.completedRecordRetentionDays,
@@ -105,22 +95,17 @@ export function buildDownloadsForm(config: AppConfig, defaultDir: string = ''): 
  * are excluded.
  */
 export function buildDownloadsSystemConfig(f: DownloadsForm): Record<string, string> {
-  const keepSharing = f.sharingMode === 'manual-stop'
   return {
     dir: f.dir,
     'max-concurrent-downloads': String(f.maxConcurrentDownloads),
     split: String(f.streamMaxConnections),
     'max-connection-per-server': String(f.streamMaxConnections),
     'max-overall-download-limit': f.maxOverallDownloadLimit,
-    'max-overall-upload-limit': f.maxOverallUploadLimit,
     'remote-time': String(!!f.remoteTime),
     'file-allocation': f.fileAllocation || D.fileAllocation,
     'incomplete-suffix': f.incompleteSuffix,
     'max-tries': String(f.maxTries),
     'retry-wait': String(f.retryWait),
-    'seed-ratio': keepSharing ? '0' : String(f.shareRatio),
-    'seed-time': keepSharing ? '' : String(f.shareTime),
-    'keep-sharing': String(keepSharing),
   }
 }
 
@@ -130,8 +115,6 @@ export function buildDownloadsSystemConfig(f: DownloadsForm): Record<string, str
  */
 export function transformDownloadsForStore(f: DownloadsForm): Partial<AppConfig> {
   const data = { ...f } as Partial<AppConfig> & Record<string, unknown>
-  delete data.sharingMode
-  data.keepSharing = f.sharingMode === 'manual-stop'
 
   // Guard: auto-populate default categories when classification is enabled but
   // the categories array is empty (edge case from GitHub issue #229).

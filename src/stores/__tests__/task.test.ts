@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 let useTaskStore: typeof import('../task').useTaskStore
-import type { Aria2Task, Aria2Peer, TaskStatus, HistoryRecord } from '@shared/types'
+import type { Aria2Task, TaskStatus, HistoryRecord } from '@shared/types'
 let registerAddedAt: typeof import('@/composables/useTaskOrder').registerAddedAt
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -30,7 +30,6 @@ const mockHistoryFns = {
   recordTaskBirth: vi.fn().mockResolvedValue(undefined),
   loadBirthRecords: vi.fn().mockResolvedValue([]),
   getSchemaVersion: vi.fn().mockResolvedValue(2),
-  removeByInfoHash: vi.fn().mockResolvedValue(undefined),
 }
 vi.mock('@/stores/history', () => ({
   useHistoryStore: () => mockHistoryFns,
@@ -49,15 +48,12 @@ const makeMockTask = (gid: string, status: TaskStatus = 'active', extra: Partial
   status,
   totalLength: '1000',
   completedLength: '500',
-  uploadLength: '0',
+
   downloadSpeed: '1000',
-  uploadSpeed: '0',
+
   connections: '1',
-  numSeeders: '0',
   dir: '/tmp',
   files: [],
-  bittorrent: undefined,
-  infoHash: undefined,
   errorCode: undefined,
   errorMessage: undefined,
   numPieces: undefined,
@@ -72,19 +68,15 @@ function createMockApi() {
   const api = {
     fetchTaskList: vi.fn().mockResolvedValue([makeMockTask('gid1'), makeMockTask('gid2')]),
     fetchTaskItem: vi.fn().mockResolvedValue(makeMockTask('gid1')),
-    fetchTaskItemWithPeers: vi.fn().mockResolvedValue({ ...makeMockTask('gid1'), peers: [] as Aria2Peer[] }),
     fetchActiveTaskList: vi.fn().mockResolvedValue([]),
     addUri: vi.fn().mockResolvedValue(['gid3']),
     addUriAtomic: vi.fn().mockResolvedValue('gid3'),
-    addTorrent: vi.fn().mockResolvedValue('gid4'),
     getOption: vi.fn().mockResolvedValue({}),
     changeOption: vi.fn().mockResolvedValue(undefined),
     getFiles: vi.fn().mockResolvedValue([]),
     removeTask: vi.fn().mockResolvedValue('gid1'),
     deleteTask: vi.fn().mockResolvedValue(undefined),
     batchDeleteTasks: vi.fn().mockResolvedValue({ succeeded: ['gid1', 'gid2'], failed: [] }),
-    finishSharing: vi.fn().mockResolvedValue(undefined),
-    batchFinishSharing: vi.fn().mockResolvedValue({ succeeded: [], failed: [] }),
     forcePauseTask: vi.fn().mockResolvedValue('gid1'),
     forcePauseAll: vi.fn().mockResolvedValue('OK'),
     pauseTask: vi.fn().mockResolvedValue('gid1'),
@@ -96,7 +88,7 @@ function createMockApi() {
     saveSession: vi.fn().mockResolvedValue('OK'),
     // The pump's snapshot reads the same engine list.
     refreshTasks: vi.fn(async () => ({
-      stat: { downloadSpeed: 0, uploadSpeed: 0, numActive: 0, numWaiting: 0, numStopped: 0, numStoppedTotal: 0 },
+      stat: { downloadSpeed: 0, numActive: 0, numWaiting: 0, numStopped: 0, numStoppedTotal: 0 },
       tasks: await api.fetchTaskList({ type: 'all' }),
     })),
   }
@@ -180,17 +172,15 @@ describe('TaskStore', () => {
     expect(mockApi.fetchTaskList).toHaveBeenCalledTimes(2)
   })
 
-  it('does not freeze unrelated tasks during resubmission or a slow detail query', async () => {
+  it('does not freeze unrelated tasks during resubmission', async () => {
     store.resubmittingGids = ['restarting']
     store.showTaskDetail(makeMockTask('live'))
-    mockApi.fetchTaskItemWithPeers.mockImplementationOnce(() => new Promise(() => {}))
     mockApi.fetchTaskList.mockResolvedValueOnce([makeMockTask('live', 'active', { completedLength: '750' })])
     await store.fetchList()
     mockApi.fetchTaskList.mockResolvedValueOnce([makeMockTask('live', 'active', { completedLength: '950' })])
     await store.fetchList(false)
     expect(store.taskList[0].completedLength).toBe('950')
     expect(store.currentTaskItem?.completedLength).toBe('950')
-    expect(mockApi.fetchTaskItemWithPeers).toHaveBeenCalledTimes(1)
   })
 
   it('shows an empty list immediately, including while the database or engine is unavailable', async () => {
@@ -328,31 +318,6 @@ describe('TaskStore', () => {
       expect(mockHistoryFns.getRecords).toHaveBeenCalledWith()
     })
 
-    it('keeps a sharing task only in In Progress until sharing ends', async () => {
-      const sharing = makeMockTask('torrent', 'active', {
-        seeder: 'true',
-        infoHash: 'hash',
-        bittorrent: { info: { name: 'torrent' } },
-      })
-      const completedRecord = {
-        gid: 'torrent',
-        name: 'torrent',
-        status: 'complete',
-        task_type: 'bt',
-        meta: JSON.stringify({ infoHash: 'hash' }),
-      } as HistoryRecord
-
-      mockHistoryFns.getRecords.mockResolvedValueOnce([completedRecord])
-      mockApi.fetchTaskList.mockResolvedValueOnce([sharing])
-      await store.changeCurrentList('completed')
-      expect(store.taskList).toEqual([])
-
-      mockHistoryFns.getRecords.mockResolvedValueOnce([completedRecord])
-      mockApi.fetchTaskList.mockResolvedValueOnce([])
-      await store.fetchList()
-      expect(store.taskList.map((task) => task.gid)).toEqual(['torrent'])
-    })
-
     it('shows errors only in Failed', async () => {
       mockHistoryFns.getRecords.mockResolvedValueOnce([
         { gid: 'error', name: 'error.zip', status: 'error' } as HistoryRecord,
@@ -364,27 +329,6 @@ describe('TaskStore', () => {
       expect(store.taskList).toHaveLength(1)
       expect(store.taskList[0].status).toBe('error')
       expect(mockHistoryFns.getRecords).toHaveBeenCalledWith()
-    })
-
-    it('filters internal ED2K search groups from In Progress', async () => {
-      const searchTask = makeMockTask('search', 'active', {
-        ed2k: { searchActive: true },
-        files: [
-          {
-            index: '1',
-            path: '/tmp/aria2-next-ed2k-search-search',
-            length: '0',
-            completedLength: '0',
-            selected: 'true',
-            uris: [],
-          },
-        ],
-      })
-      mockApi.fetchTaskList.mockResolvedValueOnce([searchTask, makeMockTask('download')])
-
-      await store.changeCurrentList('progress')
-
-      expect(store.taskList.map((task) => task.gid)).toEqual(['download'])
     })
 
     it('derives exclusive counts from live tasks and terminal history', async () => {
@@ -502,40 +446,12 @@ describe('TaskStore', () => {
     )
   })
 
-  // ─── addUri / addTorrent ────────────────────────────────
+  // ─── addUri ────────────────────────────────
 
   it('addUri calls API and refreshes list', async () => {
     await store.addUri({ uris: ['http://example.com/file.zip'], outs: [], options: {} })
     expect(mockApi.addUri).toHaveBeenCalled()
     expect(mockApi.fetchTaskList).toHaveBeenCalled()
-  })
-
-  it('addTorrent calls API, refreshes, and returns gid', async () => {
-    const gid = await store.addTorrent({ torrent: 'base64data', options: {} })
-    expect(mockApi.addTorrent).toHaveBeenCalledWith({ torrent: 'base64data', options: {} })
-    expect(gid).toBe('gid4')
-    expect(mockApi.fetchTaskList).toHaveBeenCalled()
-  })
-
-  it('prompts for native and restored magnets from snapshots without frontend registration', async () => {
-    const { useTaskSelectionStore } = await import('@/stores/taskSelection')
-    const selection = useTaskSelectionStore()
-    const waiting = makeMockTask('native-magnet', 'paused', {
-      bittorrent: { fileSelectionState: 'awaiting' },
-      selectionPrompt: true,
-    })
-    mockApi.fetchTaskList.mockResolvedValue([waiting])
-    await store.fetchList()
-    selection.present()
-    expect(selection.current).toEqual({ kind: 'bt', gid: waiting.gid })
-    selection.close()
-    selection.afterLeave()
-    await store.fetchList()
-    expect(selection.queue).toEqual([])
-    mockApi.fetchTaskList.mockResolvedValue([{ ...waiting, gid: 'manual', selectionPrompt: false }])
-    await store.fetchList()
-    expect(selection.pending).toEqual([{ kind: 'bt', gid: 'manual' }])
-    expect(selection.queue).toEqual([])
   })
 
   // ─── pauseAllTask / resumeAllTask ───────────────────────
@@ -546,19 +462,6 @@ describe('TaskStore', () => {
     expect(mockApi.forcePauseAll).toHaveBeenCalledOnce()
     expect(mockApi.forcePauseTask).not.toHaveBeenCalled()
     expect(mockApi.saveSession).not.toHaveBeenCalled()
-  })
-
-  it('pauseAllTask remains native when the queue contains sharing tasks', async () => {
-    mockApi.fetchTaskList.mockResolvedValueOnce([
-      makeMockTask('dl-1', 'active'),
-      makeMockTask('seed-1', 'active', {
-        bittorrent: { info: { name: 'movie.mkv' } },
-        seeder: 'true',
-      }),
-    ])
-    await store.fetchList()
-    await store.pauseAllTask()
-    expect(mockApi.forcePauseAll).toHaveBeenCalledOnce()
   })
 
   it('resumeAllTask resumes eligible paused tasks and refreshes the list', async () => {
@@ -650,15 +553,6 @@ describe('TaskStore', () => {
     expect(mockApi.fetchTaskList).toHaveBeenCalled()
   })
 
-  // ─── pauseTask / resumeTask ─────────────────────────────
-
-  it('pauseTask uses forcePause for BT tasks', async () => {
-    const btTask = makeMockTask('gid1', 'active', { bittorrent: { info: { name: 'test' } } })
-    await store.pauseTask(btTask)
-    expect(mockApi.forcePauseTask).toHaveBeenCalledWith({ gid: 'gid1' })
-    expect(mockApi.pauseTask).not.toHaveBeenCalled()
-  })
-
   it('pauseTask uses regular pause for HTTP tasks', async () => {
     const httpTask = makeMockTask('gid1')
     await store.pauseTask(httpTask)
@@ -706,46 +600,11 @@ describe('TaskStore', () => {
     expect(mockApi.saveSession).not.toHaveBeenCalled()
   })
 
-  // ─── updateCurrentTaskItem ──────────────────────────────
-
-  it('updateCurrentTaskItem sets task, files, and peers', () => {
-    const task = makeMockTask('gid1', 'active', {
-      files: [{ index: '1', path: '/tmp/f1', length: '100', completedLength: '50', selected: 'true', uris: [] }],
-    })
-    ;(task as Aria2Task & { peers?: Aria2Peer[] }).peers = [
-      {
-        peerId: '-qB1234-',
-        ip: '1.2.3.4',
-        port: '6881',
-        bitfield: 'ff',
-        amChoking: 'false',
-        peerChoking: 'false',
-        downloadSpeed: '100',
-        uploadSpeed: '0',
-        seeder: 'false',
-        state: 'connected',
-        transport: 'tcp',
-        encryption: 'plain',
-        sources: ['tracker'],
-        progress: '0.500000',
-        flags: 'D',
-        incoming: 'false',
-        downloaded: '100',
-        uploaded: '0',
-        completedLength: '50',
-      },
-    ]
-    store.updateCurrentTaskItem(task)
-    expect(store.currentTaskItem?.gid).toBe('gid1')
-    expect(store.currentTaskFiles).toHaveLength(1)
-  })
-
   it('updateCurrentTaskItem with null clears all', () => {
     store.showTaskDetail(makeMockTask('gid1'))
     store.updateCurrentTaskItem(null)
     expect(store.currentTaskItem).toBeNull()
     expect(store.currentTaskFiles).toEqual([])
-    expect(store.currentTaskPeers).toEqual([])
   })
 
   // ─── removeTaskRecord ───────────────────────────────────
@@ -921,25 +780,4 @@ describe('TaskStore', () => {
   // NOTE: Task lifecycle scanning (completion + error detection) has been
   // migrated to the app-level useTaskLifecycleService. Tests are in
   // src/composables/__tests__/useTaskLifecycleService.test.ts
-
-  // ── registerTorrentSource / consumeTorrentSource ────────────────────
-
-  describe('torrent source path tracking', () => {
-    it('registers and consumes a source path by infoHash', () => {
-      store.registerTorrentSource('abc123', '/downloads/movie.torrent')
-      expect(store.consumeTorrentSource('abc123')).toBe('/downloads/movie.torrent')
-    })
-
-    it('consumeTorrentSource deletes the entry after first consumption', () => {
-      store.registerTorrentSource('abc123', '/downloads/movie.torrent')
-      store.consumeTorrentSource('abc123')
-      expect(store.consumeTorrentSource('abc123')).toBeUndefined()
-    })
-
-    it('overwrites previous path when same hash is registered twice', () => {
-      store.registerTorrentSource('abc123', '/old/path.torrent')
-      store.registerTorrentSource('abc123', '/new/path.torrent')
-      expect(store.consumeTorrentSource('abc123')).toBe('/new/path.torrent')
-    })
-  })
 })

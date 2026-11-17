@@ -69,8 +69,6 @@ pub fn factory_reset(app: AppHandle) -> Result<(), AppError> {
     config_store.clear();
 
     engine::clear_engine_runtime_state(&app).map_err(AppError::Io)?;
-    crate::commands::bt_blocklist::remove_bt_peer_blocklist_cache(&app)?;
-    crate::commands::ed2k::remove_ed2k_bootstrap_cache(&app)?;
 
     Ok(())
 }

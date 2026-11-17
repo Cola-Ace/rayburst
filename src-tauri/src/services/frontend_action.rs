@@ -66,7 +66,6 @@ pub enum FrontendActionKind {
     NewTask,
     ShowDownloads,
     #[cfg(target_os = "macos")]
-    OpenTorrent,
     #[cfg(target_os = "macos")]
     Preferences,
     #[cfg(target_os = "macos")]
@@ -83,7 +82,6 @@ impl FrontendActionKind {
             Self::NewTask => "new-task",
             Self::ShowDownloads => "show-downloads",
             #[cfg(target_os = "macos")]
-            Self::OpenTorrent => "open-torrent",
             #[cfg(target_os = "macos")]
             Self::Preferences => "preferences",
             #[cfg(target_os = "macos")]
@@ -112,7 +110,6 @@ pub fn menu_action_from_id(id: &str) -> Option<FrontendActionKind> {
     match id {
         "about" => Some(FrontendActionKind::About),
         "new-task" => Some(FrontendActionKind::NewTask),
-        "open-torrent" => Some(FrontendActionKind::OpenTorrent),
         "preferences" => Some(FrontendActionKind::Preferences),
         "release-notes" => Some(FrontendActionKind::ReleaseNotes),
         "report-issue" => Some(FrontendActionKind::ReportIssue),
@@ -263,19 +260,5 @@ mod tests {
         state.set_frontend_ready(false);
 
         assert!(!state.frontend_ready());
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn maps_supported_native_menu_ids() {
-        assert_eq!(
-            menu_action_from_id("new-task"),
-            Some(FrontendActionKind::NewTask)
-        );
-        assert_eq!(
-            menu_action_from_id("open-torrent"),
-            Some(FrontendActionKind::OpenTorrent)
-        );
-        assert_eq!(menu_action_from_id("unknown"), None);
     }
 }

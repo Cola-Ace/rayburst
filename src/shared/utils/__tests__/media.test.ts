@@ -17,9 +17,9 @@ function task(media: Partial<Aria2Media> = {}): Aria2Task {
     status: 'active',
     totalLength: '0',
     completedLength: '0',
-    uploadLength: '0',
+
     downloadSpeed: '1024',
-    uploadSpeed: '0',
+
     connections: '1',
     dir: '/downloads',
     files: [],

@@ -63,13 +63,7 @@ function percentOf(task: Aria2Task): number {
   return calcProgress(Number(task.totalLength) || 0, getTaskCompletedLength(task))
 }
 
-const seeds = (task: Aria2Task) => task.seeder === 'true'
-
 function metaOf(task: Aria2Task): string {
-  if (seeds(task)) {
-    if (task.status === TASK_STATUS.PAUSED) return t('task.seeding-paused')
-    return `${t('task.seeding')} · ↑ ${bytesToSize(Number(task.uploadSpeed) || 0)}/s`
-  }
   const percent = `${percentOf(task)}%`
   if (task.status === TASK_STATUS.PAUSED) return `${percent} · ${t('task.status-paused')}`
   if (task.status === TASK_STATUS.WAITING) return `${percent} · ${t('task.status-waiting')}`
@@ -217,7 +211,6 @@ onBeforeUnmount(() => {
         <span class="panel-title">Rayburst</span>
         <span v-if="update" class="panel-speeds">
           <span>↓ {{ bytesToSize(update.stat.downloadSpeed) }}/s</span>
-          <span v-if="update.stat.uploadSpeed > 0">↑ {{ bytesToSize(update.stat.uploadSpeed) }}/s</span>
         </span>
       </header>
 
@@ -226,7 +219,7 @@ onBeforeUnmount(() => {
           v-for="(task, index) in tasks"
           :key="task.gid"
           class="panel-row"
-          :class="[`panel-row--${task.status}`, { 'panel-row--seeding': seeds(task) }]"
+          :class="`panel-row--${task.status}`"
           :style="{ '--row': Math.min(index, 8) }"
           @click="openMain"
         >
@@ -246,7 +239,7 @@ onBeforeUnmount(() => {
             </NButton>
           </div>
           <SegmentBar
-            v-if="task.status === TASK_STATUS.ACTIVE && task.bitfield && !seeds(task)"
+            v-if="task.status === TASK_STATUS.ACTIVE && task.bitfield"
             class="panel-row-bar"
             :bitfield="task.bitfield"
             :pieces="Number(task.numPieces) || 0"
@@ -454,14 +447,6 @@ onBeforeUnmount(() => {
 
 .panel-row--waiting .panel-row-bar--plain span {
   background: var(--m3-info);
-}
-
-.panel-row--seeding .panel-row-bar--plain span {
-  background: var(--m3-success);
-}
-
-.panel-row--seeding.panel-row--paused .panel-row-bar--plain span {
-  background: var(--m3-outline);
 }
 
 /* ── Empty state and footer ───────────────────────────────────────── */

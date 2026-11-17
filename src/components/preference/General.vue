@@ -152,23 +152,17 @@ const { form, isDirty, handleSave, handleReset, patchSnapshot, resetSnapshot, co
 })
 
 // ── Download capture ─────────────────────────────────────────────────
-type ClipboardType = 'http' | 'sftp' | 'magnet' | 'ed2k' | 'thunder' | 'btHash'
-const clipboardTypes: ClipboardType[] = ['http', 'sftp', 'magnet', 'ed2k', 'thunder', 'btHash']
+type ClipboardType = 'http' | 'sftp' | 'thunder'
+const clipboardTypes: ClipboardType[] = ['http', 'sftp', 'thunder']
 const clipboardTypeOptions = computed(() => [
   { label: t('preferences.clipboard-http'), value: 'http' },
   { label: t('preferences.clipboard-sftp'), value: 'sftp' },
-  { label: t('preferences.clipboard-magnet'), value: 'magnet' },
-  { label: t('preferences.clipboard-ed2k'), value: 'ed2k' },
   { label: t('preferences.clipboard-thunder'), value: 'thunder' },
-  { label: t('preferences.clipboard-bt-hash'), value: 'btHash' },
 ])
 const clipboardFieldByType: Record<ClipboardType, keyof typeof form.value> = {
   http: 'clipboardHttp',
   sftp: 'clipboardSftp',
-  magnet: 'clipboardMagnet',
-  ed2k: 'clipboardEd2k',
   thunder: 'clipboardThunder',
-  btHash: 'clipboardBtHash',
 }
 const selectedClipboardTypes = computed<string[]>({
   get: () => clipboardTypes.filter((type) => !!form.value[clipboardFieldByType[type]]),
@@ -629,7 +623,7 @@ onMounted(async () => {
         </NFormItem>
         <NFormItem>
           <template #label>
-            <PreferenceHintLabel :label="t('preferences.float-window')" :hint="t('preferences.float-window-hint')" />
+            <span>{{ t('preferences.float-window') }}</span>
           </template>
           <NSelect v-model:value="form.floatWindow" :options="floatWindowOptions" class="pref-control-auto" />
         </NFormItem>

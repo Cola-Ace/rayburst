@@ -15,10 +15,8 @@
 import type { VNodeChild } from 'vue'
 import type { Aria2Task } from '@shared/types'
 import { getTaskName } from '@shared/utils'
-import type { TaskSharingKind } from '@shared/utils/task'
 import { logger } from '@shared/logger'
 import { summarizeExternalInput } from '@shared/utils/externalInputDiagnostics'
-import { isMetadataTask } from '@/composables/useTaskLifecycle'
 import { renderCompletionToast } from '@/composables/useNotificationToast'
 
 export interface NotifyDeps {
@@ -37,8 +35,6 @@ export interface NotifyDeps {
  * for "Open File" and "Show in Folder".
  */
 export function handleTaskComplete(task: Aria2Task, deps: NotifyDeps): void {
-  if (isMetadataTask(task)) return
-
   const taskName = getTaskName(task)
   const body = deps.t('task.download-complete-message', { taskName })
 
@@ -52,36 +48,6 @@ export function handleTaskComplete(task: Aria2Task, deps: NotifyDeps): void {
   logger.debug('TaskNotify.complete', 'completion_toast_shown', { gid: task.gid, task_name: taskName })
 }
 
-/**
- * Handle a P2P download entering shared-upload state.
- * Always sends in-app toast. Native OS notification is sent by Rust monitor.
- *
- * The toast includes inline buttons
- * for "Open File" and "Show in Folder".
- */
-export function handleP2pDownloadComplete(task: Aria2Task, kind: TaskSharingKind, deps: NotifyDeps): void {
-  const taskName = getTaskName(task)
-  const bodyKey = kind === 'bt' ? 'task.bt-download-complete-message' : 'task.ed2k-download-complete-message'
-  const body = deps.t(bodyKey, { taskName })
-
-  const toastContent = renderCompletionToast({
-    body,
-    t: deps.t,
-    onOpenFile: () => deps.onOpenFile(task),
-    onShowInFolder: () => deps.onShowInFolder(task),
-  })
-  deps.messageSuccess(toastContent)
-  logger.debug('TaskNotify.p2pDownloadComplete', 'p2p_completion_toast_shown', {
-    gid: task.gid,
-    kind,
-    task_name: taskName,
-  })
-}
-
-/**
- * Handle a download error.
- * Always sends in-app toast. Native OS notification is sent by Rust monitor.
- */
 export function handleTaskError(task: Aria2Task, reason: string, deps: Pick<NotifyDeps, 'messageError' | 't'>): void {
   const taskName = getTaskName(task, { defaultName: 'Unknown' })
   const body = deps.t('task.download-fail-message', { taskName, reason })
@@ -120,6 +86,6 @@ export function handleTaskStart(taskNames: string[], deps: StartNotifyDeps): voi
   deps.messageInfo(body)
   logger.info('TaskNotify.start', 'download_notification_started', {
     count: taskNames.length,
-    first: /^(?:https?|sftp|magnet|ed2k|thunder):/i.test(firstName) ? summarizeExternalInput(firstName) : firstName,
+    first: /^(?:https?|sftp|thunder):/i.test(firstName) ? summarizeExternalInput(firstName) : firstName,
   })
 }

@@ -8,23 +8,17 @@ const allProtocols: ClipboardConfig = {
   background: false,
   http: true,
   sftp: true,
-  magnet: true,
-  ed2k: true,
   thunder: true,
-  btHash: true,
   httpFilesOnly: false,
 }
 
 describe('Resource detection contract', () => {
-  it.each([
-    'https://example.com/file.zip',
-    'sftp://example.com/file.iso',
-    'magnet:?xt=urn:btih:abc123',
-    'ed2k://|file|a.iso|123|0123456789abcdef0123456789abcdef|/',
-    'd8988e034cb5de79d319242e3365bf30a7741a6e',
-  ])('accepts supported resource %s', (resource) => {
-    expect(detectResource(resource)).toBe(true)
-  })
+  it.each(['https://example.com/file.zip', 'sftp://example.com/file.iso'])(
+    'accepts supported resource %s',
+    (resource) => {
+      expect(detectResource(resource)).toBe(true)
+    },
+  )
 
   it.each([
     '',
@@ -57,8 +51,8 @@ describe('Resource detection contract', () => {
   it('honors the master and per-protocol clipboard switches', () => {
     expect(detectResource('https://example.com/file.zip', { ...allProtocols, enable: false })).toBe(false)
     expect(detectResource('https://example.com/file.zip', { ...allProtocols, http: false })).toBe(false)
-    expect(detectResource('magnet:?xt=urn:btih:abc123', { ...allProtocols, magnet: false })).toBe(false)
-    expect(detectResource('d8988e034cb5de79d319242e3365bf30a7741a6e', { ...allProtocols, btHash: false })).toBe(false)
+    expect(detectResource('magnet:?xt=urn:btih:abc123', allProtocols)).toBe(false)
+    expect(detectResource('d8988e034cb5de79d319242e3365bf30a7741a6e', allProtocols)).toBe(false)
   })
 
   it('ignores links to web pages when asked to', () => {
@@ -68,7 +62,7 @@ describe('Resource detection contract', () => {
     expect(detectResource('https://example.com/', files)).toBe(false)
     expect(detectResource('https://example.com/index.php', files)).toBe(false)
     expect(detectResource('https://example.com/a.iso\nhttps://example.com/about', files)).toBe(false)
-    expect(detectResource('magnet:?xt=urn:btih:abc123', files)).toBe(true)
+    expect(detectResource('magnet:?xt=urn:btih:abc123', files)).toBe(false)
     expect(detectResource('https://example.com/news/article', allProtocols)).toBe(true)
   })
 

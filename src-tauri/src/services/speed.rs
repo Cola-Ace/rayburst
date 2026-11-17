@@ -78,10 +78,7 @@ async fn scheduler_loop(
 #[derive(Debug, Clone, PartialEq)]
 enum ScheduleTransition {
     /// Enter the scheduled window — enforce configured limits.
-    EnterPeriod {
-        download_limit: String,
-        upload_limit: String,
-    },
+    EnterPeriod { download_limit: String },
     /// Leave the scheduled window — set unlimited.
     LeavePeriod,
     /// Schedule or speed limit disabled — go idle.
@@ -120,13 +117,11 @@ async fn evaluate_tick(
 
     if in_period {
         log::info!(
-            "speed_scheduler: in period — dl={} ul={}",
+            "speed_scheduler: in period — dl={}",
             cfg.max_overall_download_limit,
-            cfg.max_overall_upload_limit
         );
         Some(ScheduleTransition::EnterPeriod {
             download_limit: cfg.max_overall_download_limit.clone(),
-            upload_limit: cfg.max_overall_upload_limit.clone(),
         })
     } else {
         log::info!("speed_scheduler: out of period — unlimited");
@@ -137,18 +132,11 @@ async fn evaluate_tick(
 /// Apply a schedule transition to aria2.
 async fn apply_transition(aria2: &TaskService, transition: &ScheduleTransition) {
     let opts = match transition {
-        ScheduleTransition::EnterPeriod {
-            download_limit,
-            upload_limit,
-        } => {
+        ScheduleTransition::EnterPeriod { download_limit } => {
             let mut m = serde_json::Map::new();
             m.insert(
                 "max-overall-download-limit".to_string(),
                 serde_json::Value::String(download_limit.clone()),
-            );
-            m.insert(
-                "max-overall-upload-limit".to_string(),
-                serde_json::Value::String(upload_limit.clone()),
             );
             m
         }
@@ -156,10 +144,6 @@ async fn apply_transition(aria2: &TaskService, transition: &ScheduleTransition) 
             let mut m = serde_json::Map::new();
             m.insert(
                 "max-overall-download-limit".to_string(),
-                serde_json::Value::String("0".to_string()),
-            );
-            m.insert(
-                "max-overall-upload-limit".to_string(),
                 serde_json::Value::String("0".to_string()),
             );
             m
@@ -190,15 +174,9 @@ mod tests {
     fn transition_enter_period_carries_limits() {
         let t = ScheduleTransition::EnterPeriod {
             download_limit: "1M".to_string(),
-            upload_limit: "512K".to_string(),
         };
-        if let ScheduleTransition::EnterPeriod {
-            download_limit,
-            upload_limit,
-        } = &t
-        {
+        if let ScheduleTransition::EnterPeriod { download_limit } = &t {
             assert_eq!(download_limit, "1M");
-            assert_eq!(upload_limit, "512K");
         } else {
             panic!("wrong variant");
         }
@@ -208,7 +186,6 @@ mod tests {
     fn transition_variants_are_distinct() {
         let enter = ScheduleTransition::EnterPeriod {
             download_limit: "1M".to_string(),
-            upload_limit: "512K".to_string(),
         };
         let leave = ScheduleTransition::LeavePeriod;
         let idle = ScheduleTransition::Idle;

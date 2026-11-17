@@ -77,6 +77,55 @@ fn ensure_download_session(path: &std::path::Path) -> Result<(), String> {
     }
 }
 
+fn retain_supported_session_entries(path: &std::path::Path) -> Result<(), String> {
+    use std::io::Write;
+
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("Failed to read download session: {error}"))?;
+    let mut filtered = String::new();
+    let mut supported = false;
+    for line in content.trim_start_matches('\u{feff}').split_inclusive('\n') {
+        let text = line.trim_end_matches(['\r', '\n']);
+        if text.is_empty() || text.starts_with('#') {
+            filtered.push_str(line);
+        } else if text.starts_with([' ', '\t']) {
+            if supported && !text.trim_start().starts_with("follow-torrent=") {
+                filtered.push_str(line);
+            }
+        } else {
+            let uris = text.split('\t').map(str::to_owned).collect::<Vec<_>>();
+            supported = crate::services::downloads::validate_uris(&uris).is_ok();
+            if supported {
+                filtered.push_str(line);
+            }
+        }
+    }
+    if filtered == content {
+        return Ok(());
+    }
+
+    let directory = path.parent().ok_or("Download session has no directory")?;
+    let write_session = || -> Result<(), std::io::Error> {
+        // Keep the original queue available without loading unsupported tasks.
+        let mut backup = tempfile::Builder::new()
+            .prefix("download-session-")
+            .suffix(".bak")
+            .tempfile_in(directory)?;
+        backup.write_all(content.as_bytes())?;
+        let (_, backup_path) = backup.keep()?;
+        let mut updated = tempfile::NamedTempFile::new_in(directory)?;
+        updated.write_all(filtered.as_bytes())?;
+        updated.persist(path)?;
+        log::info!(
+            "engine: archived unsupported session entries to {}",
+            backup_path.display()
+        );
+        Ok(())
+    };
+    write_session()
+        .map_err(|error| format!("Failed to prepare supported download session: {error}"))
+}
+
 fn is_windows_session_shutdown_exit(exit_code: i32) -> bool {
     matches!(
         exit_code as u32,
@@ -142,6 +191,7 @@ fn prepare_engine_args(
         .map_err(|error| format!("Failed to create app data directory: {error}"))?;
     let session_path = data_dir.join("download.session");
     ensure_download_session(&session_path)?;
+    retain_supported_session_entries(&session_path)?;
     let session_path_string = path_to_safe_string(&session_path);
     let state_dir = data_dir.join("engine").join("state");
     std::fs::create_dir_all(&state_dir)
@@ -149,10 +199,6 @@ fn prepare_engine_args(
     let state_dir_string = path_to_safe_string(&state_dir);
 
     let (log_file_path, log_level) = engine_log_config(app)?;
-    let ed2k_bootstrap = crate::commands::ed2k::ensure_ed2k_bootstrap_cache(app)
-        .map_err(|error| format!("Failed to prepare ED2K bootstrap cache: {error}"))?;
-    let bt_peer_blocklist = crate::commands::bt_blocklist::startup_blocklist_path(app)
-        .map_err(|error| format!("Failed to prepare BT peer blocklist: {error}"))?;
     let runtime_config = generate_runtime_config(
         app,
         config,
@@ -161,9 +207,6 @@ fn prepare_engine_args(
             state_dir: &state_dir_string,
             log_file_path: &log_file_path,
             log_level: &log_level,
-            ed2k_server_list: &ed2k_bootstrap.0,
-            ed2k_node_list: &ed2k_bootstrap.1,
-            bt_peer_blocklist: bt_peer_blocklist.as_deref(),
         },
     )?;
     Ok(runtime_config_args(&runtime_config))
@@ -430,5 +473,38 @@ mod tests {
                 .iter()
                 .any(|(name, value)| name == key && value.is_empty()));
         }
+    }
+
+    #[test]
+    fn restored_session_keeps_supported_downloads_and_archives_the_original() {
+        let directory = tempfile::tempdir().unwrap();
+        let session = directory.path().join("download.session");
+        let original = concat!(
+            "\u{feff}# Saved queue\r\n",
+            "https://example.test/a.zip\thttps://mirror.test/a.zip\r\n gid=123\r\n pause=true\r\n",
+            "magnet:?xt=urn:btih:abc\r\n gid=456\r\n",
+            "ed2k://|file|a.zip|1|abc|/\r\n gid=789\r\n",
+            "/downloads/local.torrent\r\n gid=abc\r\n",
+            "https://example.test/metadata.torrent\n follow-torrent=true\n out=metadata.torrent\n",
+            "sftp://example.test/file.zip\n gid=def\n",
+        );
+        std::fs::write(&session, original).unwrap();
+        retain_supported_session_entries(&session).unwrap();
+        let expected = concat!(
+            "# Saved queue\r\n",
+            "https://example.test/a.zip\thttps://mirror.test/a.zip\r\n gid=123\r\n pause=true\r\n",
+            "https://example.test/metadata.torrent\n out=metadata.torrent\n",
+            "sftp://example.test/file.zip\n gid=def\n",
+        );
+        assert_eq!(std::fs::read_to_string(&session).unwrap(), expected);
+        let backups = std::fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|extension| extension == "bak"))
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(std::fs::read_to_string(&backups[0]).unwrap(), original);
+        retain_supported_session_entries(&session).unwrap();
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
     }
 }

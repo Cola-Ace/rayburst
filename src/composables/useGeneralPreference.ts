@@ -36,10 +36,7 @@ export interface GeneralForm {
   clipboardBackground: boolean
   clipboardHttp: boolean
   clipboardSftp: boolean
-  clipboardMagnet: boolean
-  clipboardEd2k: boolean
   clipboardThunder: boolean
-  clipboardBtHash: boolean
   clipboardHttpFilesOnly: boolean
   // Notifications
   taskNotification: boolean
@@ -86,10 +83,7 @@ export function buildGeneralForm(config: AppConfig): GeneralForm {
     clipboardBackground: config.clipboard.background,
     clipboardHttp: config.clipboard.http,
     clipboardSftp: config.clipboard.sftp,
-    clipboardMagnet: config.clipboard.magnet,
-    clipboardEd2k: config.clipboard.ed2k,
     clipboardThunder: config.clipboard.thunder,
-    clipboardBtHash: config.clipboard.btHash,
     clipboardHttpFilesOnly: config.clipboard.httpFilesOnly,
     taskNotification: config.taskNotification,
     notifyOnStart: config.notifyOnStart,
@@ -105,10 +99,7 @@ export function transformGeneralForStore(form: GeneralForm): Partial<AppConfig> 
     clipboardBackground,
     clipboardHttp,
     clipboardSftp,
-    clipboardMagnet,
-    clipboardEd2k,
     clipboardThunder,
-    clipboardBtHash,
     clipboardHttpFilesOnly,
     ...rest
   } = form
@@ -119,10 +110,7 @@ export function transformGeneralForStore(form: GeneralForm): Partial<AppConfig> 
       background: clipboardBackground,
       http: clipboardHttp,
       sftp: clipboardSftp,
-      magnet: clipboardMagnet,
-      ed2k: clipboardEd2k,
       thunder: clipboardThunder,
-      btHash: clipboardBtHash,
       httpFilesOnly: clipboardHttpFilesOnly,
     },
   }

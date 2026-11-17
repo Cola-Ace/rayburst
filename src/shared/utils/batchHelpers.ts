@@ -5,7 +5,6 @@
  */
 import type { BatchItemKind, BatchItem } from '@shared/types'
 import type { Aria2EngineOptions } from '@shared/types'
-import { BARE_INFO_HASH_RE } from '@shared/constants'
 import sanitizeFilename from 'sanitize-filename'
 
 let nextId = 0
@@ -20,83 +19,6 @@ export function reissueBatchItem(item: BatchItem): BatchItem {
   return { ...item, id: genId() }
 }
 
-/**
- * Classify a source string as a download kind for the batch add-task model.
- *
- * Follows the same priority chain as aria2's `ProtocolDetector`
- * (`download_helper.cc` AccRequestGroup::operator()):
- *
- *   1. **Scheme-first** — magnet/thunder URIs are always 'uri' tasks
- *      (aria2: `guessTorrentMagnet` checks `magnet:?` prefix).
- *   2. **Remote URLs** — remain URI downloads. Manual AddTask URL input
- *      downloads the referenced file itself.
- *   3. **Local paths** — `.torrent` files become torrent tasks.
- *   4. **Fallback** — everything else is a plain 'uri'.
- */
-export function detectKind(source: string): BatchItemKind {
-  const lower = source.toLowerCase()
-
-  // ── 1. Scheme-first: non-file protocols are always URI tasks ──────
-  if (lower.startsWith('magnet:') || lower.startsWith('thunder://')) {
-    return 'uri'
-  }
-
-  // ── 2. Remote URLs are ordinary downloads ────────────────────────
-  if (/^(?:https?|sftp):\/\//i.test(lower)) return 'uri'
-
-  // ── 3. Local file paths: extension suffix match ───────────────────
-  if (lower.endsWith('.torrent')) return 'torrent'
-
-  // ── 4. Fallback ───────────────────────────────────────────────────
-  return 'uri'
-}
-
-/** Classify external-capture inputs where remote .torrent means "add BT task". */
-export function detectExternalInputKind(source: string): BatchItemKind {
-  if (/^https?:\/\//i.test(source)) {
-    try {
-      const pathname = new URL(source).pathname.toLowerCase()
-      if (pathname.endsWith('.torrent')) return 'torrent'
-    } catch {
-      return 'uri'
-    }
-  }
-  return detectKind(source)
-}
-
-/**
- * Extract the display name (`dn`) from a magnet URI.
- *
- * The `dn` parameter is the standard way to convey a human-readable name
- * in a magnet link (BEP 9 § magnet URI format).  Most tracker sites
- * (nyaa.si, 1337x, etc.) include it, but it is optional — bare info-hash
- * magnets omit it entirely.
- *
- * Returns the percent-decoded `dn` value, or an empty string if:
- * - the URI is not a `magnet:` scheme
- * - the `dn` parameter is absent or empty
- * - the URI is malformed
- */
-export function extractMagnetDisplayName(uri: string): string {
-  if (!uri.toLowerCase().startsWith('magnet:')) return ''
-  try {
-    const queryStart = uri.indexOf('?')
-    if (queryStart < 0) return ''
-    const params = new URLSearchParams(uri.substring(queryStart + 1))
-    return params.get('dn') || ''
-  } catch {
-    return ''
-  }
-}
-
-export function extractEd2kDisplayName(uri: string): string {
-  if (!uri.toLowerCase().startsWith('ed2k://|file|')) return ''
-  const parts = uri.split('|')
-  const rawName = parts[2]
-  return rawName ? sanitizeFilenameSegment(decodePathSegment(rawName)) : ''
-}
-
-/** Extract a short display name from a source path or URI. */
 function toDisplayName(source: string, kind: BatchItemKind): string {
   if (kind === 'uri') {
     // Truncate long URIs for display
@@ -116,31 +38,17 @@ export function createBatchItem(kind: BatchItemKind, source: string, payload = '
     displayName: toDisplayName(source, kind),
     payload: payload || source, // URI items use source as payload
     status: 'pending',
-    inspectionState: kind === 'torrent' ? 'reading' : undefined,
   }
-}
-
-/** Base64 of file content, the payload of a torrent item. */
-export function encodeBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
 }
 
 // ── URI normalization ───────────────────────────────────────────────
 
-/** If the line is a bare BitTorrent info hash, wrap it as a magnet URI. */
-function normalizeInfoHash(line: string): string {
-  if (!BARE_INFO_HASH_RE.test(line)) return line
-  return line.length === 64 ? `magnet:?xt=urn:btmh:1220${line.toLowerCase()}` : `magnet:?xt=urn:btih:${line}`
-}
-
 function normalizeUriLine(line: string): string {
-  return normalizeInfoHash(line.trim())
+  return line.trim()
 }
 
 function normalizeRawUriLine(line: string): string {
-  return normalizeInfoHash(line.trim())
+  return line.trim()
 }
 
 export interface Aria2InputEntry {
@@ -284,11 +192,6 @@ export function joinInputSubdir(dir: string, subdir: string[]): string {
   return [dir.replace(/[\\/]+$/, ''), ...subdir].join(separator)
 }
 
-/**
- * Split, trim, remove blanks, and deduplicate URI lines by first occurrence.
- * Handles multiline payloads — each line is treated as an independent URI.
- * Bare info hashes (SHA-1 hex / Base32) are automatically wrapped as magnet URIs.
- */
 export function normalizeUriLines(text: string): string[] {
   const seen = new Set<string>()
   const result: string[] = []
@@ -371,29 +274,8 @@ export function decodePathSegment(segment: string): string {
   }
 }
 
-/**
- * Extracts and URL-decodes the filename from a URI, then removes
- * filesystem-unsafe characters.
- *
- * Follows browser-level precedent (Chrome / Firefox / Electron):
- *   1. Parse URL → isolate pathname
- *   2. Extract last path segment
- *   3. Percent-decode via decodeURIComponent
- *   4. Replace characters forbidden by Windows / macOS / Linux with '_'
- *
- * Returns '' if no filename can be extracted (bare domain, trailing slash,
- * magnet URI, data URI, etc.) — caller should NOT set `out` in that case.
- *
- * Security: sanitizes decoded `/`, `\`, `:` etc. to prevent path traversal
- * (cf. Firefox CVE-2022-31739).
- */
 export function extractDecodedFilename(uri: string): string {
-  const ed2kName = extractEd2kDisplayName(uri)
-  if (ed2kName) return ed2kName
-
-  // Skip non-HTTP protocols that don't use URL-path filenames
-  if (/^(magnet|ed2k|data|blob):/i.test(uri)) return ''
-
+  if (/^(data|blob):/i.test(uri)) return ''
   let pathname: string
   try {
     pathname = new URL(uri).pathname

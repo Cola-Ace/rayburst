@@ -32,7 +32,7 @@ vi.mock('@shared/logger', async (importOriginal) => {
   }
 })
 
-import { changeGlobalOption, getOption, changeOption, getFiles, addUri, addUriAtomic, addTorrent } from '../aria2'
+import { changeGlobalOption, getOption, changeOption, getFiles, addUri, addUriAtomic } from '../aria2'
 
 describe('aria2 API (invoke transport)', () => {
   beforeEach(() => {
@@ -80,7 +80,7 @@ describe('aria2 API (invoke transport)', () => {
           length: '1500000000',
           'completed-length': '0',
           selected: 'true',
-          uris: [{ uri: 'magnet:?xt=urn:btih:abc', status: 'used' }],
+          uris: [{ uri: 'https://example.test/movie.mkv', status: 'used' }],
         },
         {
           index: '2',
@@ -92,8 +92,8 @@ describe('aria2 API (invoke transport)', () => {
         },
       ]
       mockInvoke.mockResolvedValueOnce(rawFiles)
-      const result = await getFiles({ gid: 'magnet-gid' })
-      expect(mockInvoke).toHaveBeenCalledWith('aria2_get_files', { gid: 'magnet-gid' })
+      const result = await getFiles({ gid: 'file-gid' })
+      expect(mockInvoke).toHaveBeenCalledWith('aria2_get_files', { gid: 'file-gid' })
       expect(result).toHaveLength(2)
       expect(result[0].path).toBe('/downloads/movie.mkv')
       expect(result[0].completedLength).toBe('0')
@@ -169,29 +169,6 @@ describe('aria2 API (invoke transport)', () => {
       })
     })
 
-    it('addUri classifies ED2K downloads by the canonical link filename', async () => {
-      mockInvoke.mockResolvedValue('gid1')
-      mockInvoke.mockResolvedValueOnce({ directory: '/downloads/Archives' })
-      const uri = 'ed2k://|file|Ubuntu%2026.04.iso|123456789|0123456789abcdef0123456789abcdef|/'
-
-      await addUri({
-        uris: [uri],
-        outs: [],
-        options: { dir: '/downloads' },
-        fileCategory: {
-          enabled: true,
-          categories: [
-            { label: 'Archives', extensions: ['iso'], directory: '/downloads/Archives', directoryMode: 'absolute' },
-          ],
-        },
-      })
-
-      expect(mockInvoke).toHaveBeenCalledWith('aria2_add_uri', {
-        uris: [uri],
-        options: { dir: '/downloads/Archives' },
-      })
-    })
-
     it('addUri classifies downloads by extension and URL context', async () => {
       mockInvoke.mockResolvedValue('gid1')
       mockInvoke.mockResolvedValueOnce({ directory: '/downloads/Logs' })
@@ -240,34 +217,6 @@ describe('aria2 API (invoke transport)', () => {
         uris: ['http://mirror1.com/f.zip', 'http://mirror2.com/f.zip'],
         options: expect.any(Object),
       })
-    })
-
-    it('addTorrent passes base64 torrent data', async () => {
-      mockInvoke.mockResolvedValueOnce('gid-torrent')
-      const result = await addTorrent({ torrent: 'base64data', options: {} })
-      expect(result).toBe('gid-torrent')
-      expect(mockInvoke).toHaveBeenCalledWith('aria2_add_torrent', {
-        torrent: 'base64data',
-        options: { 'force-save': 'true', 'check-integrity': 'true' },
-      })
-    })
-
-    it('addTorrent preserves caller-supplied options', async () => {
-      mockInvoke.mockResolvedValueOnce('gid-torrent')
-      await addTorrent({ torrent: 'data', options: { dir: '/custom', 'stream-max-connections': '4' } })
-      const callArgs = mockInvoke.mock.calls[0][1] as Record<string, unknown>
-      const options = callArgs.options as Record<string, string>
-      expect(options['force-save']).toBe('true')
-      expect(options['check-integrity']).toBe('true')
-      expect(options.dir).toBe('/custom')
-      expect(options['stream-max-connections']).toBe('4')
-    })
-
-    it('addTorrent keeps explicit caller force-save value', async () => {
-      mockInvoke.mockResolvedValueOnce('gid-torrent')
-      await addTorrent({ torrent: 'data', options: { 'force-save': 'false' } })
-      const callArgs = mockInvoke.mock.calls[0][1] as Record<string, unknown>
-      expect((callArgs.options as Record<string, string>)['force-save']).toBe('false')
     })
 
     it('addUri does NOT inject force-save (HTTP downloads must not persist)', async () => {

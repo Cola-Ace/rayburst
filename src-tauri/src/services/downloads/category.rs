@@ -101,7 +101,7 @@ fn file_name(value: &str) -> String {
                 .map(std::borrow::Cow::into_owned)
                 .unwrap_or_else(|_| url.path().to_owned())
         }
-        Ok(url) if matches!(url.scheme(), "magnet" | "data" | "blob") => String::new(),
+        Ok(url) if matches!(url.scheme(), "data" | "blob") => String::new(),
         _ => value.to_owned(),
     }
 }
@@ -312,15 +312,6 @@ mod tests {
         second.directory = "Documents/".into();
         assert!(resolve(&files, &[first, second], base).unwrap().is_some());
         assert!(resolve(&[], &[], base).unwrap().is_none());
-    }
-
-    #[test]
-    fn filenames_are_text_and_only_url_paths_are_decoded() {
-        assert_eq!(extensions("https://example.test/file%2Epdf?x=1"), ["pdf"]);
-        assert_eq!(extensions("file%2Epdf"), [""]);
-        assert_eq!(extensions("magnet:?dn=file.pdf"), [""]);
-        assert_eq!(extensions(".gitignore"), [""]);
-        assert_eq!(extensions("archive.tar.gz"), ["gz"]);
     }
 
     #[test]

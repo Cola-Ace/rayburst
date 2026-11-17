@@ -7,9 +7,7 @@
  * them directly, enabling testability and keeping the task store thin.
  */
 import { TASK_STATUS } from '@shared/constants'
-import { checkTaskIsBT, checkTaskIsSharing } from '@shared/utils'
 import { logger } from '@shared/logger'
-import { isAwaitingBtFileSelection } from '@/composables/useBtLifecycle'
 import type { Aria2Task, TaskApi, TaskDeletionOptions } from '@shared/types'
 import type { Ref } from 'vue'
 
@@ -21,7 +19,6 @@ interface TaskOperationsDeps {
   fetchList: () => Promise<void>
   setTaskRemoving?: (gid: string, removing: boolean) => void
   requestMediaSelection?: (task: Aria2Task) => void
-  requestMagnetSelection?: (gid: string) => void
   clearSelections?: (gids: string[]) => void | Promise<void>
 }
 
@@ -46,33 +43,9 @@ export function createTaskOperations(deps: TaskOperationsDeps) {
   }
 
   async function pauseTask(task: Aria2Task) {
-    const isBT = checkTaskIsBT(task)
-    const promise = isBT ? api.forcePauseTask({ gid: task.gid }) : api.pauseTask({ gid: task.gid })
     try {
-      await promise
-      logger.info('TaskOps.pauseTask', `gid=${task.gid} bt=${isBT}`)
-    } finally {
-      await fetchList()
-    }
-  }
-
-  async function finishSharing(task: Aria2Task): Promise<void> {
-    try {
-      await api.finishSharing({ gid: task.gid })
-      logger.info('TaskOps.finishSharing', `gid=${task.gid}`)
-    } finally {
-      await fetchList()
-    }
-  }
-
-  async function finishSharingTasks(gids: string[]) {
-    try {
-      const result = await api.batchFinishSharing({ gids })
-      logger.info(
-        'TaskOps.finishSharingTasks',
-        `finished=${result.succeeded.length} failed=${result.failed.length} gids=[${gids.join(',')}]`,
-      )
-      return result
+      await api.pauseTask({ gid: task.gid })
+      logger.info('TaskOps.pauseTask', `gid=${task.gid}`)
     } finally {
       await fetchList()
     }
@@ -81,11 +54,6 @@ export function createTaskOperations(deps: TaskOperationsDeps) {
   async function resumeTask(task: Aria2Task): Promise<boolean> {
     if (task.media?.state === 'awaiting-selection') {
       deps.requestMediaSelection?.(task)
-      return false
-    }
-    if (isAwaitingBtFileSelection(task)) {
-      logger.info('TaskOps.resumeTask', `gid=${task.gid} blocked=file-selection-required`)
-      deps.requestMagnetSelection?.(task.gid)
       return false
     }
 
@@ -102,11 +70,7 @@ export function createTaskOperations(deps: TaskOperationsDeps) {
   async function pauseTasks(tasks: Aria2Task[]): Promise<number> {
     const live = tasks.filter((task) => task.status === TASK_STATUS.ACTIVE || task.status === TASK_STATUS.WAITING)
     try {
-      const results = await Promise.allSettled(
-        live.map((task) =>
-          checkTaskIsBT(task) ? api.forcePauseTask({ gid: task.gid }) : api.pauseTask({ gid: task.gid }),
-        ),
-      )
+      const results = await Promise.allSettled(live.map((task) => api.pauseTask({ gid: task.gid })))
       const failed = results.filter((result) => result.status === 'rejected').length
       logger.info('TaskOps.pauseTasks', `paused=${live.length - failed} failed=${failed}`)
       return failed
@@ -122,7 +86,6 @@ export function createTaskOperations(deps: TaskOperationsDeps) {
     try {
       for (const task of paused) {
         if (task.media?.state === 'awaiting-selection') deps.requestMediaSelection?.(task)
-        else if (isAwaitingBtFileSelection(task)) deps.requestMagnetSelection?.(task.gid)
         else await api.resumeTask({ gid: task.gid }).catch(() => failed++)
       }
       logger.info('TaskOps.resumeTasks', `resumed=${paused.length - failed} failed=${failed}`)
@@ -156,7 +119,7 @@ export function createTaskOperations(deps: TaskOperationsDeps) {
     if (status === TASK_STATUS.ACTIVE) return pauseTask(task)
     if (status === TASK_STATUS.WAITING) return pauseTask(task)
     if (status === TASK_STATUS.PAUSED) return resumeTask(task)
-    logger.debug('TaskOps.toggleTask', `no-op gid=${task.gid} status=${status} sharing=${checkTaskIsSharing(task)}`)
+    logger.debug('TaskOps.toggleTask', `no-op gid=${task.gid} status=${status}`)
   }
 
   async function removeTaskRecord(task: Aria2Task) {
@@ -213,8 +176,6 @@ export function createTaskOperations(deps: TaskOperationsDeps) {
   return {
     removeTask,
     pauseTask,
-    finishSharing,
-    finishSharingTasks,
     resumeTask,
     pauseAllTask,
     resumeAllTask,

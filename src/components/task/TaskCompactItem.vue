@@ -6,7 +6,7 @@ import { TASK_STATUS } from '@shared/constants'
 import { NEllipsis, NIcon } from 'naive-ui'
 import LinearProgress from '@/components/common/LinearProgress.vue'
 import MTooltip, { TOOLTIP_DEFAULTS } from '@/components/common/MTooltip.vue'
-import { ArrowDownOutline, ArrowUpOutline, AlertCircleOutline, RadioOutline, TimeOutline } from '@vicons/ionicons5'
+import { ArrowDownOutline, AlertCircleOutline, RadioOutline, TimeOutline } from '@vicons/ionicons5'
 import { useTaskCardModel } from '@/composables/useTaskCardModel'
 import { canOpenTaskContent, dragTaskContent } from '@/composables/useTaskContentOpen'
 import { useTaskFileMissing } from '@/composables/useTaskFileMissing'
@@ -22,7 +22,6 @@ const emit = defineEmits<{
   resume: [task: Aria2Task]
   retry: [task: Aria2Task]
   redownload: [task: Aria2Task]
-  'finish-sharing': [task: Aria2Task]
   'finish-media': [task: Aria2Task]
   delete: [task: Aria2Task]
   'delete-record': [task: Aria2Task]
@@ -30,14 +29,12 @@ const emit = defineEmits<{
   'show-info': [task: Aria2Task]
   folder: [task: Aria2Task]
   'open-file': [task: Aria2Task]
-  'select-files': [task: Aria2Task]
 }>()
 
 const { t } = useI18n()
 const taskRef = computed(() => props.task)
 const {
   taskFullName,
-  isSharing,
   statusBadge,
   taskStatus,
   isActive,
@@ -47,15 +44,13 @@ const {
   totalSize,
   hasSizeInfo,
   downloadSpeed,
-  uploadSpeed,
   remaining,
   remainingText,
-  transferSummary,
 } = useTaskCardModel(taskRef)
 const { fileMissing, fileState } = useTaskFileMissing(taskRef)
 // The rail orders the list; the rest of a finished card drags its file out.
 const contentDraggable = computed(
-  () => !fileMissing.value && !props.actionPending && (props.task.status === TASK_STATUS.COMPLETE || isSharing.value),
+  () => !fileMissing.value && !props.actionPending && props.task.status === TASK_STATUS.COMPLETE,
 )
 
 const statusColorMap: Record<string, string> = {
@@ -65,7 +60,6 @@ const statusColorMap: Record<string, string> = {
   error: 'var(--m3-status-error)',
   complete: 'var(--m3-status-success)',
   removed: 'var(--m3-status-paused)',
-  sharing: 'var(--m3-status-success)',
 }
 
 const progressColor = computed(() => statusColorMap[taskStatus.value] || 'var(--m3-status-active)')
@@ -85,8 +79,6 @@ const compactStatus = computed<{ label: string; tone: string; icon: Component } 
       return { label: statusBadge.value.label, tone: 'error', icon: AlertCircleOutline }
     case TASK_STATUS.WAITING:
       return { label: statusBadge.value.label, tone: statusBadge.value.tone, icon: TimeOutline }
-    case 'bt-metadata-fetching':
-      return { label: statusBadge.value.label, tone: statusBadge.value.tone, icon: RadioOutline }
     default:
       return { label: statusBadge.value.label, tone: statusBadge.value.tone, icon: RadioOutline }
   }
@@ -96,9 +88,6 @@ const compactStatus = computed<{ label: string; tone: string; icon: Component } 
 <template>
   <div
     class="task-compact-item"
-    :class="{
-      'is-sharing': isSharing,
-    }"
     @dblclick="!fileMissing && !actionPending && canOpenTaskContent(task, $event) && emit('open-file', task)"
   >
     <TaskDragHandle class="compact-drag-rail" />
@@ -121,7 +110,6 @@ const compactStatus = computed<{ label: string; tone: string; icon: Component } 
           @resume="emit('resume', task)"
           @retry="emit('retry', task)"
           @redownload="emit('redownload', task)"
-          @finish-sharing="emit('finish-sharing', task)"
           @finish-media="emit('finish-media', task)"
           @delete="emit('delete', task)"
           @delete-record="emit('delete-record', task)"
@@ -129,7 +117,6 @@ const compactStatus = computed<{ label: string; tone: string; icon: Component } 
           @show-info="emit('show-info', task)"
           @folder="emit('folder', task)"
           @open-file="emit('open-file', task)"
-          @select-files="emit('select-files', task)"
         />
       </div>
       <div class="compact-progress-row">
@@ -158,10 +145,6 @@ const compactStatus = computed<{ label: string; tone: string; icon: Component } 
               <NIcon :size="10"><ArrowDownOutline /></NIcon>
               {{ downloadSpeed }}/s
             </span>
-            <span v-if="transferSummary.showUploadMetrics" class="compact-speed compact-meta-item">
-              <NIcon :size="10"><ArrowUpOutline /></NIcon>
-              {{ uploadSpeed }}/s
-            </span>
             <span v-if="remaining > 0" class="compact-meta-item">{{ remainingText }}</span>
           </NEllipsis>
         </div>
@@ -182,22 +165,6 @@ const compactStatus = computed<{ label: string; tone: string; icon: Component } 
   border-radius: var(--radius-sm);
   overflow: hidden;
   transition: border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
-}
-.task-compact-item::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--m3-success) 6%, transparent) 0%, transparent 40%);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--task-motion-state) var(--task-motion-ease);
-}
-.task-compact-item.is-sharing {
-  border-left-color: var(--m3-success);
-}
-.task-compact-item.is-sharing::before {
-  opacity: 1;
 }
 .task-compact-item:hover .compact-drag-rail {
   opacity: 0.64;

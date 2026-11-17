@@ -21,8 +21,6 @@ import {
 } from '@vicons/ionicons5'
 import { type Component } from 'vue'
 import type { Aria2Task } from '@shared/types'
-import { getBtLifecycleState } from '@/composables/useBtLifecycle'
-import { getSharingActionLabelKey, getTaskSharingState } from '@shared/utils/task'
 
 const props = withDefaults(
   defineProps<{ task: Aria2Task; fileMissing?: boolean; pending?: boolean; density?: 'full' | 'compact' }>(),
@@ -33,7 +31,6 @@ const emit = defineEmits<{
   resume: []
   retry: []
   redownload: []
-  'finish-sharing': []
   'finish-media': []
   delete: []
   'delete-record': []
@@ -41,7 +38,6 @@ const emit = defineEmits<{
   'show-info': []
   folder: []
   'open-file': []
-  'select-files': []
 }>()
 
 const { t } = useI18n()
@@ -56,55 +52,10 @@ interface ActionDef {
 }
 
 const actions = computed(() => {
-  const lifecycle = getBtLifecycleState(props.task)
-  const sharing = getTaskSharingState(props.task)
   let primary: ActionDef[]
   if (props.task.media?.state === 'awaiting-selection') {
     primary = [
       { key: 'select-content', icon: ListOutline, label: t('media.select-tracks'), event: 'resume', emphasis: true },
-      { key: 'delete', icon: CloseOutline, label: t('task.delete-task'), event: 'delete' },
-    ]
-  } else if (lifecycle === 'selection') {
-    primary = [
-      {
-        key: 'select-files',
-        icon: ListOutline,
-        label: t('task.select-files'),
-        event: 'select-files',
-        emphasis: true,
-      },
-      { key: 'delete', icon: CloseOutline, label: t('task.delete-task'), event: 'delete' },
-    ]
-  } else if (lifecycle === 'recovering') {
-    primary = [{ key: 'delete', icon: CloseOutline, label: t('task.delete-task'), event: 'delete' }]
-  } else if (lifecycle === 'error') {
-    primary = [
-      ...(props.task.status === TASK_STATUS.ERROR
-        ? [{ key: 'retry', icon: RefreshOutline, label: t('task.retry-task'), event: 'retry' }]
-        : []),
-      { key: 'info', icon: InformationCircleOutline, label: t('task.task-detail-title'), event: 'show-info' },
-      { key: 'delete', icon: CloseOutline, label: t('task.delete-task'), event: 'delete' },
-    ]
-  } else if (sharing?.phase === 'active') {
-    primary = [
-      { key: 'toggle', icon: PauseOutline, label: t(getSharingActionLabelKey(sharing.kind, 'pause')), event: 'pause' },
-      {
-        key: 'finish-sharing',
-        icon: StopCircleOutline,
-        label: t(getSharingActionLabelKey(sharing.kind, 'finish')),
-        event: 'finish-sharing',
-      },
-      { key: 'delete', icon: CloseOutline, label: t('task.delete-task'), event: 'delete' },
-    ]
-  } else if (sharing?.phase === 'paused') {
-    primary = [
-      { key: 'toggle', icon: PlayOutline, label: t(getSharingActionLabelKey(sharing.kind, 'resume')), event: 'resume' },
-      {
-        key: 'finish-sharing',
-        icon: StopCircleOutline,
-        label: t(getSharingActionLabelKey(sharing.kind, 'finish')),
-        event: 'finish-sharing',
-      },
       { key: 'delete', icon: CloseOutline, label: t('task.delete-task'), event: 'delete' },
     ]
   } else {
@@ -183,9 +134,6 @@ function onAction(event: string) {
     case 'finish-media':
       emit('finish-media')
       break
-    case 'finish-sharing':
-      emit('finish-sharing')
-      break
     case 'delete':
       emit('delete')
       break
@@ -203,9 +151,6 @@ function onAction(event: string) {
       break
     case 'open-file':
       emit('open-file')
-      break
-    case 'select-files':
-      emit('select-files')
       break
   }
 }

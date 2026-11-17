@@ -16,13 +16,4 @@ export const nonHotReloadableKeys: readonly string[] = aria2Options.nonHotReload
  * Changed form keys (kebab-case) that require an engine restart to take
  * effect. Drives the "restart now?" dialog on preference save.
  */
-export const needRestartKeys = [
-  'ed2k-listen-port',
-  'ed2k-max-connections',
-  'ed2k-server',
-  'ed2k-udp-listen-port',
-  'ed2k-upload-slots',
-  'rpc-listen-port',
-  'allow-remote-access',
-  'rpc-secret',
-]
+export const needRestartKeys = ['rpc-listen-port', 'allow-remote-access', 'rpc-secret']

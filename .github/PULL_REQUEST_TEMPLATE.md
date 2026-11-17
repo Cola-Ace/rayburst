@@ -9,7 +9,7 @@ PR title MUST follow Conventional Commits format.
     fix(macos): resolve tray icon blurriness on Retina displays
     feat: add per-task speed limit control
     docs: update i18n translation guide
-    refactor: extract tracker sync into composable
+    refactor: extract update checks into composable
 
   Bad titles:
     fix bugs

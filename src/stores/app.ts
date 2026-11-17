@@ -8,7 +8,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { logger } from '@shared/logger'
-import { detectExternalInputKind, detectKind, createBatchItem, reissueBatchItem } from '@shared/utils/batchHelpers'
+import { createBatchItem, reissueBatchItem } from '@shared/utils/batchHelpers'
 import { summarizeExternalInput } from '@shared/utils/externalInputDiagnostics'
 import { submitManualUris } from '@/composables/useAddTaskSubmit'
 import { usePreferenceStore } from '@/stores/preference'
@@ -38,18 +38,12 @@ export interface DeepLinkHandlingResult {
   ignored: number
 }
 
-function normalizeFileUriPath(url: string): string {
-  const decodedPath = decodeURIComponent(url.replace(/^file:\/\//i, ''))
-  return /^\/[A-Za-z]:[\\/]/.test(decodedPath) ? decodedPath.slice(1) : decodedPath
-}
-
 export const useAppStore = defineStore('app', () => {
   const systemTheme = ref('light')
   const trayFocused = ref(false)
   const aboutPanelVisible = ref(false)
   const stat = ref({
     downloadSpeed: 0,
-    uploadSpeed: 0,
     numActive: 0,
     numWaiting: 0,
     numStopped: 0,
@@ -178,7 +172,6 @@ export const useAppStore = defineStore('app', () => {
   function applyStat(payload: Aria2GlobalStat) {
     stat.value = {
       downloadSpeed: payload.downloadSpeed,
-      uploadSpeed: payload.uploadSpeed,
       numActive: payload.numActive,
       numWaiting: payload.numWaiting,
       numStopped: payload.numStopped,
@@ -200,8 +193,6 @@ export const useAppStore = defineStore('app', () => {
     if (!urls || urls.length === 0) return result
 
     const items: BatchItem[] = []
-    const FILE_EXTS = ['.torrent']
-
     for (const url of urls) {
       const lower = url.toLowerCase()
       // The private scheme activates the app; downloads use the authenticated HTTP API.
@@ -210,32 +201,10 @@ export const useAppStore = defineStore('app', () => {
         continue
       }
 
-      // Determine if this is a local file reference (file:// protocol or raw path)
-      const isFileUri = lower.startsWith('file://')
-      const isRemoteUri =
-        lower.startsWith('http://') ||
-        lower.startsWith('https://') ||
-        lower.startsWith('sftp://') ||
-        lower.startsWith('magnet:') ||
-        lower.startsWith('ed2k://') ||
-        lower.startsWith('thunder://')
-      const isLocalPath = !isRemoteUri && !isFileUri && (!/^[a-z][a-z0-9+.-]*:/i.test(url) || /^[a-z]:[\\/]/i.test(url))
-
-      // Only treat as a file-based batch item if it's a LOCAL path or file:// URI
-      const hasFileExt = FILE_EXTS.some((ext) => lower.endsWith(ext))
-      if ((isLocalPath || isFileUri) && hasFileExt) {
-        const filePath = isFileUri ? normalizeFileUriPath(url) : url
-        const kind = detectKind(filePath)
-        items.push(createBatchItem(kind, filePath))
-      } else if (lower.startsWith('magnet:')) {
+      if (/^(?:https?|ftp|sftp|thunder):\/\//i.test(url)) {
         items.push(createBatchItem('uri', url))
-      } else if (lower.startsWith('ed2k://')) {
-        items.push(createBatchItem('uri', url))
-      } else if (lower.startsWith('thunder://')) {
-        items.push(createBatchItem('uri', url))
-      } else if (isRemoteUri) {
-        const kind = detectExternalInputKind(url)
-        items.push(createBatchItem(kind, url))
+      } else {
+        result.ignored += 1
       }
     }
 
@@ -306,11 +275,7 @@ export const useAppStore = defineStore('app', () => {
   ): Pick<DeepLinkHandlingResult, 'autoSubmitted' | 'ignored'> {
     const downloadUrl = input.url
     const preferenceStore = usePreferenceStore()
-    const detected = detectExternalInputKind(downloadUrl)
-    // A saved .torrent is an ordinary file; the engine does not follow it (#50).
-    const keepTorrentFile =
-      preferenceStore.config.extensionTorrentAction === 'save' || !preferenceStore.config.bittorrentEnabled
-    const kind = detected === 'torrent' && keepTorrentFile ? 'uri' : detected
+    const kind = 'uri' as const
     const resolvedHint = input.filename?.trim() ?? ''
     const context = buildExternalContext(input)
 

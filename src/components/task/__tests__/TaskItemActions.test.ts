@@ -32,9 +32,9 @@ function makeTask(status: TaskStatus, overrides: Partial<Aria2Task> = {}): Aria2
     status,
     totalLength: '1024',
     completedLength: '512',
-    uploadLength: '0',
+
     downloadSpeed: '0',
-    uploadSpeed: '0',
+
     connections: '0',
     dir: '/tmp',
     files: [],
@@ -100,101 +100,6 @@ describe('TaskItemActions', () => {
     const paused = mountActions(makeTask('paused'))
     await paused.find('[aria-label="task.resume-task"]').trigger('click')
     expect(paused.emitted('resume')).toBeTruthy()
-  })
-
-  it('renders an icon-only file-selection action for pending magnets', async () => {
-    const wrapper = mountActions(
-      makeTask('paused', {
-        bittorrent: { state: 'paused', fileSelectionState: 'awaiting', info: { name: 'Torrent' } },
-      }),
-    )
-
-    const action = wrapper.find('[aria-label="task.select-files"]')
-    expect(action.text()).toBe('')
-    expect(action.classes()).toContain('task-item-action--emphasis')
-    await action.trigger('click')
-    expect(wrapper.emitted('select-files')).toBeTruthy()
-    expect(wrapper.emitted('resume')).toBeFalsy()
-  })
-
-  it('supports pause, resume, and terminal seeding actions', async () => {
-    const seeding = mountActions(
-      makeTask('active', {
-        completedLength: '1024',
-        seeder: 'true',
-        bittorrent: { state: 'seeding' },
-      }),
-    )
-    await seeding.find('[aria-label="task.pause-seeding"]').trigger('click')
-    expect(seeding.emitted('pause')).toBeTruthy()
-    await seeding.find('[aria-label="task.finish-seeding"]').trigger('click')
-    expect(seeding.emitted('finish-sharing')).toBeTruthy()
-
-    const paused = mountActions(
-      makeTask('paused', {
-        completedLength: '1024',
-        seeder: 'true',
-        bittorrent: { state: 'paused' },
-      }),
-    )
-    await paused.find('[aria-label="task.resume-seeding"]').trigger('click')
-    expect(paused.emitted('resume')).toBeTruthy()
-    expect(paused.find('[aria-label="task.finish-seeding"]').exists()).toBe(true)
-  })
-
-  it('supports the complete ED2K sharing lifecycle', async () => {
-    const active = mountActions(
-      makeTask('active', {
-        completedLength: '1024',
-        seeder: 'true',
-        ed2k: { hash: 'ed2k-hash' },
-      }),
-    )
-    expect(active.find('[aria-label="task.pause-sharing"]').exists()).toBe(true)
-    await active.find('[aria-label="task.finish-sharing"]').trigger('click')
-    expect(active.emitted('finish-sharing')).toBeTruthy()
-
-    const paused = mountActions(
-      makeTask('paused', {
-        completedLength: '1024',
-        seeder: 'true',
-        ed2k: { hash: 'ed2k-hash' },
-      }),
-    )
-    expect(paused.find('[aria-label="task.resume-sharing"]').exists()).toBe(true)
-    expect(paused.find('[aria-label="task.finish-sharing"]').exists()).toBe(true)
-  })
-
-  it('limits recovery actions to details and deletion', () => {
-    const wrapper = mountActions(
-      makeTask('active', {
-        completedLength: '1024',
-        seeder: 'false',
-        bittorrent: { state: 'recovering' },
-      }),
-    )
-
-    expect(wrapper.find('[aria-label="task.finish-seeding"]').exists()).toBe(false)
-    expect(wrapper.find('[aria-label="task.delete-task"]').exists()).toBe(true)
-  })
-
-  it('offers retry for terminal BitTorrent failures', async () => {
-    const wrapper = mountActions(
-      makeTask('error', {
-        bittorrent: {
-          state: 'error',
-          error: {
-            code: 'network',
-            kind: 'network',
-            category: 'network',
-            recoverable: 'true',
-            message: 'network failure',
-          },
-        },
-      }),
-    )
-    await wrapper.find('[aria-label="task.retry-task"]').trigger('click')
-    expect(wrapper.emitted('retry')).toBeTruthy()
   })
 
   it('keeps terminal actions accessible', () => {

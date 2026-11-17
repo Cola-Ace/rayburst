@@ -11,17 +11,10 @@ import type {
   Aria2Task,
   Aria2RawGlobalStat,
   TaskSnapshot,
-  Aria2Peer,
   Aria2EngineOptions,
   Aria2File,
-  Aria2BtTracker,
-  Aria2BtTrackerConfig,
-  Aria2BtPeerAddResult,
   AppConfig,
-  Ed2kSearchOptions,
-  Ed2kSearchResults,
   ExternalDownloadContext,
-  TorrentInspection,
   BatchDeleteTaskTarget,
   BatchTaskOperationResult,
   ResumeEligibleResult,
@@ -39,20 +32,12 @@ export function isEngineReady(): boolean {
   return pinia ? useEngineStore(pinia).isReady : false
 }
 
-function withBtSafetyOptions(options: Aria2EngineOptions): Aria2EngineOptions {
-  return {
-    ...options,
-    'check-integrity': options['check-integrity'] ?? 'true',
-    'force-save': options['force-save'] ?? 'true',
-  }
-}
-
 /** Retrieves aria2 engine version and list of enabled features. */
 export async function getVersion(): Promise<{ version: string; enabledFeatures: string[] }> {
   return invoke<{ version: string; enabledFeatures: string[] }>('aria2_get_version')
 }
 
-/** Fetches aggregated download/upload statistics from aria2. */
+/** Fetches aggregated download statistics from aria2. */
 export async function getGlobalStat(): Promise<Aria2RawGlobalStat> {
   return invoke<Aria2RawGlobalStat>('aria2_get_global_stat')
 }
@@ -87,34 +72,6 @@ export async function getRedirectTarget(gid: string): Promise<string | null> {
   return invoke<string | null>('aria2_get_redirect_target', { gid })
 }
 
-export async function selectBtFiles(gid: string, indices: number[]): Promise<void> {
-  await invoke('aria2_select_bt_files', { gid, indices })
-}
-
-export async function deferBtSelection(gid: string): Promise<void> {
-  await invoke('aria2_defer_bt_selection', { gid })
-}
-
-export async function getBtTrackers(params: { gid: string }): Promise<Aria2BtTracker[]> {
-  return invoke<Aria2BtTracker[]>('aria2_get_bt_trackers', { gid: params.gid })
-}
-
-export async function forceBtRecheck(params: { gid: string }): Promise<void> {
-  await invoke<string>('aria2_force_bt_recheck', params)
-}
-
-export async function replaceBtTrackers(params: { gid: string; trackers: Aria2BtTrackerConfig[] }): Promise<void> {
-  await invoke<string>('aria2_replace_bt_trackers', params)
-}
-
-export async function replaceBtWebSeeds(params: { gid: string; webSeeds: string[] }): Promise<void> {
-  await invoke<string>('aria2_replace_bt_web_seeds', params)
-}
-
-export async function addBtPeers(params: { gid: string; peers: string[] }): Promise<Aria2BtPeerAddResult> {
-  return invoke<Aria2BtPeerAddResult>('aria2_add_bt_peers', params)
-}
-
 /** Returns an engine snapshot read after this call. */
 export async function refreshTasks(): Promise<TaskSnapshot> {
   return invoke<TaskSnapshot>('tasks_refresh')
@@ -136,11 +93,6 @@ export async function fetchTaskList(params: { type: string; limit?: number }): P
 /** Fetches a single task's full status by GID. */
 export async function fetchTaskItem(params: { gid: string }): Promise<Aria2Task> {
   return invoke<Aria2Task>('aria2_fetch_task_item', { gid: params.gid })
-}
-
-/** Fetches a single task's status along with its peer list (for BT tasks). */
-export async function fetchTaskItemWithPeers(params: { gid: string }): Promise<Aria2Task & { peers: Aria2Peer[] }> {
-  return invoke<Aria2Task & { peers: Aria2Peer[] }>('aria2_fetch_task_item_with_peers', { gid: params.gid })
 }
 
 /** Adds one or more URI downloads with per-URI output filename overrides. */
@@ -226,45 +178,6 @@ export async function addUriAtomic(params: { uris: string[]; options: Aria2Engin
   return gid
 }
 
-/** Adds a torrent download from a base64-encoded .torrent file. */
-export async function addTorrent(params: {
-  torrent: string
-  options: Aria2EngineOptions
-  requestId?: string
-}): Promise<string> {
-  const engineOptions = formatOptionsForEngine(withBtSafetyOptions(params.options))
-  const gid = await invoke<string>('aria2_add_torrent', {
-    torrent: params.torrent,
-    options: engineOptions,
-    requestId: params.requestId,
-  })
-  logger.info('aria2.addTorrent', `gid=${gid}`)
-  return gid
-}
-
-/** Inspects torrent metainfo without creating a task or engine state. */
-export async function inspectTorrent(params: { torrent: string }): Promise<TorrentInspection> {
-  return invoke<TorrentInspection>('aria2_inspect_torrent', { torrent: params.torrent })
-}
-
-/** Starts an ED2K search and returns the search GID. */
-export async function ed2kSearch(params: { keyword: string; options?: Ed2kSearchOptions }): Promise<string> {
-  return invoke<string>('aria2_ed2k_search', {
-    keyword: params.keyword,
-    options: params.options ?? {},
-  })
-}
-
-/** Fetches ED2K search results by search GID. */
-export async function getEd2kSearchResults(params: { gid: string }): Promise<Ed2kSearchResults> {
-  return invoke<Ed2kSearchResults>('aria2_get_ed2k_search_results', { gid: params.gid })
-}
-
-/** Cleans up an internal ED2K search task and its temporary files. */
-export async function cleanupEd2kSearch(params: { gid: string }): Promise<void> {
-  await invoke<void>('aria2_cleanup_ed2k_search', { gid: params.gid })
-}
-
 /** Forcefully removes a download task by GID. */
 export async function removeTask(params: { gid: string }): Promise<string> {
   return invoke<string>('aria2_force_remove', { gid: params.gid })
@@ -279,16 +192,6 @@ export async function deleteTask(params: {
     gid: params.gid,
     deleteMode: params.deleteMode ?? null,
   })
-}
-
-/** Ends one P2P sharing task while preserving files and completed history. */
-export async function finishSharing(params: { gid: string }): Promise<void> {
-  return invoke<void>('aria2_finish_sharing', params)
-}
-
-/** Ends multiple P2P sharing tasks in one native application transaction. */
-export async function batchFinishSharing(params: { gids: string[] }): Promise<BatchTaskOperationResult> {
-  return invoke<BatchTaskOperationResult>('aria2_batch_finish_sharing', params)
 }
 
 /** Deletes multiple tasks with native engine and history cleanup. */
@@ -316,7 +219,7 @@ export async function resumeTask(params: { gid: string }): Promise<string> {
   return invoke<string>('aria2_unpause', { gid: params.gid })
 }
 
-/** Resumes all eligible paused tasks while preserving magnet selection guards. */
+/** Resumes all eligible paused tasks while preserving media selection guards. */
 export async function resumeEligible(): Promise<ResumeEligibleResult> {
   return invoke<ResumeEligibleResult>('aria2_resume_eligible')
 }
@@ -351,24 +254,15 @@ const api = {
   getOption,
   changeOption,
   getFiles,
-  getBtTrackers,
   fetchActiveTaskList,
   fetchTaskList,
   refreshTasks,
   fetchTaskItem,
-  fetchTaskItemWithPeers,
   addUri,
   addUriAtomic,
-  addTorrent,
-  inspectTorrent,
-  ed2kSearch,
-  getEd2kSearchResults,
-  cleanupEd2kSearch,
   removeTask,
   deleteTask,
   batchDeleteTasks,
-  finishSharing,
-  batchFinishSharing,
   forcePauseTask,
   forcePauseAll,
   pauseTask,

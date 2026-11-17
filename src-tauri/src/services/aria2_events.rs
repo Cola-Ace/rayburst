@@ -19,31 +19,28 @@ const AUTHORIZATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NativeEventKind {
-    DownloadStart,
-    DownloadPause,
-    DownloadComplete,
-    DownloadError,
-    BtDownloadComplete,
+    Start,
+    Pause,
+    Complete,
+    Error,
 }
 
 impl NativeEventKind {
     fn from_method(method: &str) -> Option<Self> {
         match method {
-            "aria2.onDownloadStart" => Some(Self::DownloadStart),
-            "aria2.onDownloadPause" => Some(Self::DownloadPause),
-            "aria2.onDownloadComplete" => Some(Self::DownloadComplete),
-            "aria2.onDownloadError" => Some(Self::DownloadError),
-            "aria2.onBtDownloadComplete" => Some(Self::BtDownloadComplete),
+            "aria2.onDownloadStart" => Some(Self::Start),
+            "aria2.onDownloadPause" => Some(Self::Pause),
+            "aria2.onDownloadComplete" => Some(Self::Complete),
+            "aria2.onDownloadError" => Some(Self::Error),
             _ => None,
         }
     }
 
     fn lifecycle_event(self) -> Option<&'static str> {
         match self {
-            Self::DownloadStart | Self::DownloadPause => None,
-            Self::DownloadComplete => Some(events::TASK_COMPLETE),
-            Self::DownloadError => Some(events::TASK_ERROR),
-            Self::BtDownloadComplete => Some(events::P2P_DOWNLOAD_COMPLETE),
+            Self::Start | Self::Pause => None,
+            Self::Complete => Some(events::TASK_COMPLETE),
+            Self::Error => Some(events::TASK_ERROR),
         }
     }
 }
@@ -201,14 +198,14 @@ async fn handle_native_event(
         }
         return Ok(());
     }
-    if event.kind == NativeEventKind::DownloadPause && aria2.tasks.is_automatic(&event.gid).await {
+    if event.kind == NativeEventKind::Pause && aria2.tasks.is_automatic(&event.gid).await {
         return Ok(());
     }
-    if event.kind == NativeEventKind::DownloadStart {
+    if event.kind == NativeEventKind::Start {
         super::pump::wake(app);
         return Ok(());
     }
-    if event.kind == NativeEventKind::DownloadPause {
+    if event.kind == NativeEventKind::Pause {
         super::pump::wake(app);
         let foreground = app
             .get_webview_window("main")
@@ -326,17 +323,10 @@ mod tests {
     #[test]
     fn parses_native_lifecycle_events() {
         let cases = [
-            ("aria2.onDownloadStart", NativeEventKind::DownloadStart),
-            ("aria2.onDownloadPause", NativeEventKind::DownloadPause),
-            (
-                "aria2.onDownloadComplete",
-                NativeEventKind::DownloadComplete,
-            ),
-            ("aria2.onDownloadError", NativeEventKind::DownloadError),
-            (
-                "aria2.onBtDownloadComplete",
-                NativeEventKind::BtDownloadComplete,
-            ),
+            ("aria2.onDownloadStart", NativeEventKind::Start),
+            ("aria2.onDownloadPause", NativeEventKind::Pause),
+            ("aria2.onDownloadComplete", NativeEventKind::Complete),
+            ("aria2.onDownloadError", NativeEventKind::Error),
         ];
 
         for (method, kind) in cases {

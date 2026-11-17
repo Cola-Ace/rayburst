@@ -60,9 +60,9 @@ function createTask(path: string): Aria2Task {
     status: 'complete',
     totalLength: '100',
     completedLength: '100',
-    uploadLength: '0',
+
     downloadSpeed: '0',
-    uploadSpeed: '0',
+
     connections: '0',
     dir: '/downloads',
     files: [
@@ -83,8 +83,6 @@ function createTask(path: string): Aria2Task {
         uris: [],
       },
     ],
-    bittorrent: { info: { name: 'archive.zip' } },
-    numSeeders: '0',
     errorMessage: '',
   }
 }
@@ -100,7 +98,11 @@ describe('TaskItem', () => {
     expect(wrapper.findAll('.task-text-transition-content')[0].element).toBe(name)
     expect(wrapper.findAll('.task-text-transition-content')[1].element).toBe(status)
     await wrapper.setProps({
-      task: { ...task, status: 'active', bittorrent: { state: 'seeding', info: { name: 'renamed.zip' } } },
+      task: {
+        ...task,
+        status: 'active',
+        files: task.files.map((file) => ({ ...file, path: '/downloads/renamed.zip' })),
+      },
     })
     expect(wrapper.findAll('.task-text-transition-content')[0].element).not.toBe(name)
     expect(wrapper.findAll('.task-text-transition-content')[1].element).not.toBe(status)
@@ -179,7 +181,6 @@ describe('TaskItem', () => {
       totalLength: '104857600',
       completedLength: '1048576',
       downloadSpeed: '1048576',
-      bittorrent: undefined,
     } satisfies Aria2Task
     const wrapper = mount(TaskCompactItem, { props: { task } })
     const progress = wrapper.get('.compact-progress').element
@@ -199,9 +200,8 @@ describe('TaskItem', () => {
         ...task,
         completedLength: '104857600',
         downloadSpeed: '0',
-        uploadSpeed: '10485760',
-        seeder: 'true',
-        bittorrent: { state: 'seeding', info: { name: 'archive.zip' } },
+
+        status: 'complete',
       },
     })
 
@@ -209,9 +209,8 @@ describe('TaskItem', () => {
     expect(wrapper.get('.compact-progress').attributes('aria-valuenow')).toBe('100')
     expect(wrapper.get('.compact-percent').text()).toBe('100%')
     expect(wrapper.get('.compact-meta').text()).toContain('100.00 MB / 100.00 MB')
-    expect(wrapper.get('.compact-status').text()).toBe('task.seeding')
-    expect(wrapper.findAll('.compact-speed')).toHaveLength(2)
-    expect(wrapper.get('.compact-meta').text()).toContain('10.0 MB/s')
+    expect(wrapper.get('.compact-status').text()).toBe('task.task-complete')
+    expect(wrapper.findAll('.compact-speed')).toHaveLength(0)
     wrapper.unmount()
   })
 
@@ -250,42 +249,6 @@ describe('TaskItem', () => {
     expect(wrapper.find('.task-status-slot').exists()).toBe(true)
     expect(wrapper.find('.task-tags').exists()).toBe(true)
     expect(wrapper.find('.task-status-slot').classes()).not.toContain('task-status-slot--visible')
-  })
-
-  it('shows torrent metadata fetching status once', () => {
-    const task = {
-      ...createTask(''),
-      status: 'active',
-      totalLength: '0',
-      completedLength: '0',
-      files: [],
-      bittorrent: { state: 'downloadingMetadata' },
-    } satisfies Aria2Task
-
-    const wrapper = mount(TaskItem, {
-      props: {
-        task,
-      },
-    })
-
-    expect(wrapper.text().match(/task\.bt-metadata-fetching/g)).toHaveLength(1)
-    expect(wrapper.find('.progress-left').classes()).toContain('info-hidden')
-  })
-
-  it('shows a queued magnet as queued', () => {
-    const task = {
-      ...createTask(''),
-      status: 'waiting',
-      totalLength: '0',
-      completedLength: '0',
-      files: [],
-      bittorrent: { state: 'downloadingMetadata' },
-    } satisfies Aria2Task
-
-    const wrapper = mount(TaskItem, { props: { task } })
-
-    expect(wrapper.text()).not.toContain('task.bt-metadata-fetching')
-    expect(wrapper.text()).toContain('task.status-waiting')
   })
 
   it('keeps the full card surface non-interactive', async () => {

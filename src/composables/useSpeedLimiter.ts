@@ -84,8 +84,7 @@ export function formatLimitBadge(value: string): string {
  */
 export function hasConfiguredLimit(config: AppConfig): boolean {
   const dl = parseSpeedLimitValue(config.maxOverallDownloadLimit)
-  const ul = parseSpeedLimitValue(config.maxOverallUploadLimit)
-  return dl.num > 0 || ul.num > 0
+  return dl.num > 0
 }
 
 /**
@@ -125,22 +124,19 @@ export async function toggleSpeedLimit(
     // Remove limits from aria2 engine
     await deps.changeGlobalOption({
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
     })
     await deps.updateAndSave({ speedLimitEnabled: false })
-    logger.info('SpeedLimiter.toggle', 'disabled — sent 0/0 to aria2')
+    logger.info('SpeedLimiter.toggle', 'disabled — sent 0 to aria2')
     return 'disabled'
   }
 
   // action === 'enable': apply configured values
   const dl = config.maxOverallDownloadLimit
-  const ul = config.maxOverallUploadLimit
   await deps.changeGlobalOption({
     maxOverallDownloadLimit: dl,
-    maxOverallUploadLimit: ul,
   })
   await deps.updateAndSave({ speedLimitEnabled: true })
-  logger.info('SpeedLimiter.toggle', `enabled — dl=${dl} ul=${ul}`)
+  logger.info('SpeedLimiter.toggle', `enabled — dl=${dl}`)
   return 'enabled'
 }
 
@@ -149,24 +145,17 @@ export async function toggleSpeedLimit(
  * them to the preference store. Automatically sets speedLimitEnabled
  * based on whether at least one limit is non-zero.
  */
-export async function applyCustomLimit(
-  downloadLimit: string,
-  uploadLimit: string,
-  deps: SpeedLimiterDeps,
-): Promise<void> {
+export async function applyCustomLimit(downloadLimit: string, deps: SpeedLimiterDeps): Promise<void> {
   await deps.changeGlobalOption({
     maxOverallDownloadLimit: downloadLimit,
-    maxOverallUploadLimit: uploadLimit,
   })
 
   const dlParsed = parseSpeedLimitValue(downloadLimit)
-  const ulParsed = parseSpeedLimitValue(uploadLimit)
-  const hasLimit = dlParsed.num > 0 || ulParsed.num > 0
+  const hasLimit = dlParsed.num > 0
 
   await deps.updateAndSave({
     maxOverallDownloadLimit: downloadLimit,
-    maxOverallUploadLimit: uploadLimit,
     speedLimitEnabled: hasLimit,
   })
-  logger.info('SpeedLimiter.applyCustom', `dl=${downloadLimit} ul=${uploadLimit} enabled=${hasLimit}`)
+  logger.info('SpeedLimiter.applyCustom', `dl=${downloadLimit} enabled=${hasLimit}`)
 }

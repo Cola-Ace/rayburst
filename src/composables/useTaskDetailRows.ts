@@ -1,14 +1,7 @@
 /** @fileoverview Pure row builders for heavy task detail tabs. */
-import {
-  bitfieldToPercent,
-  bytesToSize,
-  calcProgress,
-  getFileExtension,
-  getFileName,
-  peerIdParser,
-} from '@shared/utils'
+import { calcProgress, getFileExtension, getFileName } from '@shared/utils'
 import { decodePathSegment } from '@shared/utils/batchHelpers'
-import type { Aria2File, Aria2Peer, Aria2Task, BtFilePriority } from '@shared/types'
+import type { Aria2File, Aria2Task } from '@shared/types'
 
 export interface FileDetailRow {
   idx: number
@@ -18,7 +11,6 @@ export interface FileDetailRow {
   completedLength: number
   percent: number
   selected: boolean
-  priority: BtFilePriority
 }
 
 export interface SourceDetailRow {
@@ -27,20 +19,6 @@ export interface SourceDetailRow {
   uriIndex: number
   uri: string
   status: string
-}
-
-export interface PeerDetailRow {
-  index: number
-  host: string
-  ip: string
-  client: string
-  connection: string
-  percent: string
-  uploadSpeed: string
-  downloadSpeed: string
-  amChoking: boolean
-  peerChoking: boolean
-  seeder: boolean
 }
 
 export function buildFileDetailRows(files: Aria2File[]): FileDetailRow[] {
@@ -56,7 +34,6 @@ export function buildFileDetailRows(files: Aria2File[]): FileDetailRow[] {
       completedLength,
       percent: calcProgress(item.length, item.completedLength),
       selected: item.selected === 'true',
-      priority: item.priority ?? (item.selected === 'true' ? 'normal' : 'off'),
     }
   })
 }
@@ -73,28 +50,6 @@ export function buildSourceDetailRows(task: Aria2Task | null | undefined): Sourc
   )
 }
 
-export function buildPeerDetailRows(peers: Aria2Peer[] | undefined): PeerDetailRow[] {
-  return (peers ?? [])
-    .map((peer) => ({
-      host: `${peer.ip}:${peer.port}`,
-      ip: peer.ip,
-      client: peer.peerClientName || peerIdParser(peer.peerId ?? ''),
-      connection: [peer.state, peer.transport, peer.encryption].filter(Boolean).join(' · '),
-      percent: peer.bitfield
-        ? bitfieldToPercent(peer.bitfield) + '%'
-        : peer.progress
-          ? `${Math.floor(Number(peer.progress) * 100)}%`
-          : '-',
-      uploadSpeed: bytesToSize(peer.uploadSpeed) + '/s',
-      downloadSpeed: bytesToSize(peer.downloadSpeed) + '/s',
-      amChoking: peer.amChoking === 'true',
-      peerChoking: peer.peerChoking === 'true',
-      seeder: peer.seeder === 'true',
-    }))
-    .sort((a, b) => a.host.localeCompare(b.host))
-    .map((row, index) => ({ ...row, index: index + 1 }))
-}
-
 export function sourceRowsSignature(task: Aria2Task | null | undefined): string {
   const files = task?.files ?? []
   const shape = files
@@ -104,11 +59,4 @@ export function sourceRowsSignature(task: Aria2Task | null | undefined): string 
     )
     .join(';')
   return `${task?.gid ?? ''}:${files.length}:${shape}`
-}
-
-export function peerRowsSignature(peers: Aria2Peer[] | undefined): string {
-  return (peers ?? [])
-    .map((peer) => `${peer.ip}:${peer.port}`)
-    .sort()
-    .join('|')
 }

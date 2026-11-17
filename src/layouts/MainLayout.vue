@@ -10,12 +10,9 @@ import { useEngineStore } from '@/stores/engine'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '@shared/logger'
-import { isMetadataTask } from '@/composables/useTaskLifecycle'
 import { resolveTaskFilePath, requestFileRecheck } from '@/composables/useTaskPaths'
-import { handleTaskComplete, handleP2pDownloadComplete, handleTaskError } from '@/composables/useTaskNotifyHandlers'
-import { shouldDeleteTorrent, trashTorrentFile } from '@/composables/useDownloadCleanup'
-import { getTaskName, resolveOpenTarget, checkTaskIsSharing, getTaskSharingKind } from '@shared/utils'
-import type { TaskSharingKind } from '@shared/utils/task'
+import { handleTaskComplete, handleTaskError } from '@/composables/useTaskNotifyHandlers'
+import { resolveOpenTarget } from '@shared/utils'
 import type { Aria2Task, FloatWindowMode, TaskSnapshot } from '@shared/types'
 import { ARIA2_ERROR_CODES } from '@shared/aria2ErrorCodes'
 import { FLOAT_WINDOW_MODE_LABELS } from '@shared/constants'
@@ -37,7 +34,6 @@ import WindowControls from '@/components/layout/WindowControls.vue'
 import EngineRecoveryDialog from '@/components/layout/EngineRecoveryDialog.vue'
 import AboutPanel from '@/components/about/AboutPanel.vue'
 import ExtensionPanel from '@/components/extension/ExtensionPanel.vue'
-import TorrentDropOverlay from '@/components/task/TorrentDropOverlay.vue'
 import UpdateDialog from '@/components/preference/UpdateDialog.vue'
 import TaskSelectionHost from '@/components/task/TaskSelectionHost.vue'
 import { useTaskStore } from '@/stores/task'
@@ -136,7 +132,6 @@ let unlistenPowerCountdown: (() => void) | null = null
 
 const updateDialogRef = ref<InstanceType<typeof UpdateDialog> | null>(null)
 
-let unlistenDragDrop: (() => void) | null = null
 let unlistenMenuEvent: (() => void) | null = null
 let unlistenCloseRequested: (() => void) | null = null
 let unlistenDeepLink: (() => void) | null = null
@@ -438,7 +433,7 @@ function skipShutdownOnce() {
  * Called from lifecycle callbacks instead
  * of a stat watcher. Queries aria2 directly for real-time task state,
  * bypassing the stale taskStore.taskList and the unreliable
- * appStore.stat.numActive (which counts seeders as active).
+ * appStore.stat.numActive.
  */
 async function checkShutdownCondition() {
   if (!preferenceStore.config.shutdownWhenComplete) return
@@ -446,7 +441,7 @@ async function checkShutdownCondition() {
 
   try {
     const activeTasks = await aria2Api.fetchTaskList({ type: 'active' })
-    const activeDownloads = activeTasks.filter((t) => !checkTaskIsSharing(t))
+    const activeDownloads = activeTasks
     if (activeDownloads.length > 0) return
 
     const waitingTasks = await aria2Api.fetchTaskList({ type: 'waiting' })
@@ -535,7 +530,7 @@ onMounted(async () => {
 
   // ── Task lifecycle reactions (driven by native Aria2 Next events) ─
   // Rust persists lifecycle records before emitting these UI events. The
-  // frontend owns in-app toasts, auto-archive moves, and torrent cleanup.
+  // frontend owns in-app toasts and completed-file actions.
   const historyStore = useHistoryStore()
 
   // ── Pre-populate task birth timestamps from DB ──────────────────
@@ -561,7 +556,6 @@ onMounted(async () => {
   }
 
   async function onTaskError(task: Aria2Task): Promise<void> {
-    if (isMetadataTask(task)) return
     taskStore.fetchList().catch((e) => logger.debug('Lifecycle.taskCounts.error', e))
     const i18nKey = task.errorCode ? ARIA2_ERROR_CODES[task.errorCode] : undefined
     const errorText = i18nKey ? t(i18nKey) : task.errorMessage || t('task.error-unknown')
@@ -572,7 +566,6 @@ onMounted(async () => {
   }
 
   async function onTaskComplete(task: Aria2Task): Promise<void> {
-    if (isMetadataTask(task)) return
     taskStore.fetchList().catch((e) => logger.debug('Lifecycle.taskCounts', e))
     handleTaskComplete(task, {
       messageSuccess: message.success,
@@ -586,36 +579,7 @@ onMounted(async () => {
     checkShutdownCondition()
   }
 
-  async function onP2pDownloadComplete(task: Aria2Task, kind: TaskSharingKind): Promise<void> {
-    if (!isMetadataTask(task)) {
-      taskStore.fetchList().catch((e) => logger.debug('Lifecycle.p2pDownloadComplete.taskCounts', e))
-    }
-    handleP2pDownloadComplete(task, kind, {
-      messageSuccess: message.success,
-      messageError: message.error,
-      t,
-      onOpenFile: openFileFromNotification,
-      onShowInFolder: showInFolderFromNotification,
-    })
-
-    // ── Auto-shutdown: check after P2P download completion ──
-    // Must be BEFORE shouldDeleteTorrent early return to avoid being skipped.
-    checkShutdownCondition()
-
-    if (kind !== 'bt') return
-    if (!shouldDeleteTorrent(preferenceStore.config)) return
-    const sourcePath = taskStore.consumeTorrentSource(task.gid)
-    if (sourcePath) {
-      const ok = await trashTorrentFile(sourcePath)
-      if (ok) {
-        const taskName = getTaskName(task)
-        message.success(t('task.torrent-trashed', { taskName }))
-      }
-    }
-  }
-
   unlistenTaskMonitor = [
-    await listen<string>('bt-selection:error', ({ payload }) => message.error(payload)),
     await listen<{ gid: string }>('task-monitor:error', async ({ payload }) => {
       const task = await fetchTaskForEvent(payload.gid)
       if (task) await onTaskError(task)
@@ -624,15 +588,6 @@ onMounted(async () => {
       const task = await fetchTaskForEvent(payload.gid)
       if (task) await onTaskComplete(task)
     }),
-    await listen<{ gid: string; sharingKind?: TaskSharingKind }>(
-      'task-monitor:p2p-download-complete',
-      async ({ payload }) => {
-        const task = await fetchTaskForEvent(payload.gid)
-        if (!task) return
-        const kind = payload.sharingKind ?? getTaskSharingKind(task)
-        if (kind) await onP2pDownloadComplete(task, kind)
-      },
-    ),
   ]
 
   // ── Window-focus file-existence recheck ─────────────────────────────
@@ -662,7 +617,6 @@ onMounted(async () => {
   // Engine-init feedback, navigation guards, IPC listeners, and crash recovery
   // are encapsulated in the useAppEvents composable.
   const listeners = await setupListeners()
-  unlistenDragDrop = listeners.unlistenDragDrop
   unlistenMenuEvent = listeners.unlistenMenuEvent
   unlistenTrayMenu = listeners.unlistenTrayMenu
   unlistenDeepLink = listeners.unlistenDeepLink
@@ -719,7 +673,6 @@ onMounted(async () => {
         // Custom menu items (matched by ID)
         about: t('app.menu-about'),
         'new-task': t('app.menu-new-task'),
-        'open-torrent': t('app.menu-open-torrent'),
         preferences: t('app.menu-preferences'),
         'release-notes': t('app.menu-release-notes'),
         'report-issue': t('app.menu-report-issue'),
@@ -755,7 +708,6 @@ onUnmounted(() => {
   unlistenTaskMonitor.forEach((fn) => fn())
   unlistenTaskMonitor = []
   if (unlistenFocusRecheck) unlistenFocusRecheck()
-  if (unlistenDragDrop) unlistenDragDrop()
   if (unlistenMenuEvent) unlistenMenuEvent()
   if (unlistenCloseRequested) unlistenCloseRequested()
   if (unlistenDeepLink) unlistenDeepLink()
@@ -919,7 +871,6 @@ onUnmounted(() => {
         style="margin-top: 12px"
       />
     </NModal>
-    <TorrentDropOverlay />
   </div>
 </template>
 

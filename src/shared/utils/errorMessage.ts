@@ -8,10 +8,8 @@ const TAURI_ERROR_LABELS: Record<string, string> = {
   Io: 'IO error',
   NotFound: 'Not found',
   Updater: 'Updater error',
-  Upnp: 'UPnP error',
   Protocol: 'Protocol error',
   Aria2: 'Aria2 Next error',
-  TorrentInspection: 'Torrent inspection error',
   Database: 'Database error',
   NewerDatabase: 'Database written by a newer version',
 }
@@ -96,15 +94,6 @@ function normalizeMessage(value: unknown, options: ErrorMessageOptions): string 
 
   if (isRecord(value.Rpc) && typeof value.Rpc.message === 'string') {
     return `Aria2 Next error [${value.Rpc.code}]: ${value.Rpc.message}`
-  }
-
-  const torrentInspection = value.TorrentInspection
-  if (isRecord(torrentInspection)) {
-    const kind = torrentInspection.kind
-    const message = torrentInspection.message
-    if (typeof kind === 'string' && typeof message === 'string') {
-      return `${TAURI_ERROR_LABELS.TorrentInspection} [${kind}]: ${message}`
-    }
   }
 
   for (const variant of Object.keys(TAURI_ERROR_LABELS) as TauriErrorVariant[]) {

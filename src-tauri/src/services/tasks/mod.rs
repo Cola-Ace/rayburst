@@ -1,5 +1,4 @@
 //! Application task queries, admission and native controls.
-pub mod bittorrent;
 pub mod files;
 mod policy;
 use crate::{
@@ -91,7 +90,7 @@ impl TaskService {
         self.call("shutdown", vec![]).await
     }
 
-    /// Returns global download/upload statistics.
+    /// Returns global download statistics.
     pub async fn get_global_stat(&self) -> Result<Aria2GlobalStat, AppError> {
         let mut stat: Aria2GlobalStat = self.call("getGlobalStat", vec![]).await?;
         if self.tasks.has_internal().await {
@@ -110,7 +109,7 @@ impl TaskService {
         Ok(stat)
     }
 
-    /// Returns all active (downloading/seeding) tasks.
+    /// Returns all active (downloading) tasks.
     pub async fn tell_active(&self) -> Result<Vec<Aria2Task>, AppError> {
         Ok(self
             .tasks
@@ -251,6 +250,7 @@ impl TaskService {
 
     /// Forcefully pauses all active tasks.
     pub async fn force_pause_all(&self) -> Result<String, AppError> {
+        let _mutation = self.mutation.lock().await;
         self.tasks.clear_automatic().await;
         if !self.tasks.has_internal().await {
             return self.call("forcePauseAll", vec![]).await;
@@ -268,8 +268,9 @@ impl TaskService {
         Ok("OK".into())
     }
 
-    /// Resumes paused tasks that do not require unresolved magnet file selection.
+    /// Resumes paused tasks that do not require unresolved media selection.
     pub async fn resume_eligible(&self) -> Result<ResumeEligibleResult, AppError> {
+        let _mutation = self.mutation.lock().await;
         const PAGE_SIZE: i64 = 1000;
         let mut waiting_tasks = Vec::new();
         let mut offset = 0;
@@ -293,12 +294,10 @@ impl TaskService {
                 blocked += 1;
                 continue;
             }
-            let requires_file_selection = bittorrent::needs_selection(&task);
-            if requires_file_selection
-                || task
-                    .media
-                    .as_ref()
-                    .is_some_and(|media| media.state == "awaiting-selection")
+            if task
+                .media
+                .as_ref()
+                .is_some_and(|media| media.state == "awaiting-selection")
             {
                 blocked += 1;
                 continue;
@@ -307,9 +306,6 @@ impl TaskService {
         }
 
         if !resumable_gids.is_empty() {
-            for gid in &resumable_gids {
-                self.recheck_before_resume(gid).await?;
-            }
             let calls = resumable_gids
                 .iter()
                 .map(|gid| {
@@ -335,16 +331,9 @@ impl TaskService {
         mut opts: serde_json::Map<String, serde_json::Value>,
     ) -> Result<String, AppError> {
         crate::proxy_bypass::normalize_options(&mut opts)?;
+        opts.insert("follow-torrent".into(), "false".into());
         self.call("changeGlobalOption", vec![serde_json::Value::Object(opts)])
             .await
-    }
-
-    pub async fn get_bt_session_status(&self) -> Result<Aria2BtSessionStatus, AppError> {
-        self.call("getBtSessionStatus", vec![]).await
-    }
-
-    pub async fn get_bt_trackers(&self, gid: &str) -> Result<Vec<Aria2BtTracker>, AppError> {
-        self.call("getBtTrackers", vec![gid.into()]).await
     }
 
     /// Moves an unfinished download's files to `dir`; the engine pauses a
@@ -360,51 +349,16 @@ impl TaskService {
             .await
     }
 
-    pub async fn force_bt_recheck(&self, gid: &str) -> Result<String, AppError> {
-        self.call("forceBtRecheck", vec![gid.into()]).await
-    }
-
-    pub async fn replace_bt_trackers(
-        &self,
-        gid: &str,
-        trackers: Vec<Aria2BtTrackerConfig>,
-    ) -> Result<String, AppError> {
-        self.call(
-            "replaceBtTrackers",
-            vec![gid.into(), serde_json::json!(trackers)],
-        )
-        .await
-    }
-
-    pub async fn replace_bt_web_seeds(
-        &self,
-        gid: &str,
-        web_seeds: Vec<String>,
-    ) -> Result<String, AppError> {
-        self.call(
-            "replaceBtWebSeeds",
-            vec![gid.into(), serde_json::json!(web_seeds)],
-        )
-        .await
-    }
-
-    pub async fn add_bt_peers(
-        &self,
-        gid: &str,
-        peers: Vec<String>,
-    ) -> Result<Aria2BtPeerAddResult, AppError> {
-        self.call("addBtPeers", vec![gid.into(), serde_json::json!(peers)])
-            .await
-    }
-
     /// Adds a URI-based download.
     pub async fn add_uri(
         &self,
         uris: Vec<String>,
         mut opts: serde_json::Value,
     ) -> Result<String, AppError> {
+        crate::services::downloads::validate_uris(&uris)?;
         if let Some(options) = opts.as_object_mut() {
             crate::proxy_bypass::normalize_options(options)?;
+            options.insert("follow-torrent".into(), "false".into());
         }
         self.call("addUri", vec![serde_json::json!(uris), opts])
             .await
@@ -427,27 +381,6 @@ impl TaskService {
                 std::time::Duration::from_secs(25),
             )
             .await
-    }
-
-    /// Adds a torrent download from base64-encoded .torrent content.
-    pub async fn add_torrent(
-        &self,
-        base64: &str,
-        mut opts: serde_json::Value,
-    ) -> Result<String, AppError> {
-        if let Some(options) = opts.as_object_mut() {
-            crate::proxy_bypass::normalize_options(options)?;
-        }
-        self.call(
-            "addTorrent",
-            vec![base64.into(), serde_json::json!([]), opts],
-        )
-        .await
-    }
-
-    /// Inspects torrent metainfo without creating a download task.
-    pub async fn inspect_torrent(&self, base64: &str) -> Result<Aria2TorrentInspection, AppError> {
-        self.call("inspectTorrent", vec![base64.into()]).await
     }
 
     /// Returns file descriptors for a task.
@@ -475,6 +408,7 @@ impl TaskService {
     ) -> Result<String, AppError> {
         if let Some(options) = opts.as_object_mut() {
             crate::proxy_bypass::normalize_options(options)?;
+            options.insert("follow-torrent".into(), "false".into());
         }
         self.call("changeOption", vec![gid.into(), opts]).await
     }
@@ -488,43 +422,10 @@ impl TaskService {
         self.rpc.call("system.listMethods", vec![]).await
     }
 
-    /// Returns peer information for a BitTorrent task.
-    pub async fn get_peers(&self, gid: &str) -> Result<serde_json::Value, AppError> {
-        self.call("getPeers", vec![gid.into()]).await
-    }
-
-    /// Starts an ED2K search and returns the search GID.
-    pub async fn ed2k_search(
-        &self,
-        keyword: &str,
-        opts: serde_json::Value,
-    ) -> Result<String, AppError> {
-        self.call("ed2kSearch", vec![keyword.into(), opts]).await
-    }
-
-    /// Returns ED2K search results for a search GID.
-    pub async fn get_ed2k_search_results(&self, gid: &str) -> Result<serde_json::Value, AppError> {
-        self.call("getEd2kSearchResults", vec![gid.into()]).await
-    }
-
-    /// Removes an internal ED2K search request group after results are read.
-    pub async fn cleanup_ed2k_search(&self, gid: &str) -> Result<(), AppError> {
-        match self.force_remove(gid).await {
-            Ok(_) => return Ok(()),
-            Err(e) => log::debug!("ed2k: force_remove search gid={gid} skipped: {e}"),
-        }
-        match self.remove_download_result(gid).await {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                log::debug!("ed2k: remove_download_result search gid={gid} skipped: {e}");
-                Ok(())
-            }
-        }
-    }
-
     /// Replaces every source of a single-file download with `uris`. Sources
     /// with open connections stay until those connections end.
     pub async fn replace_uris(&self, gid: &str, uris: Vec<String>) -> Result<(), AppError> {
+        crate::services::downloads::validate_uris(&uris)?;
         let files = self.get_files(gid).await?;
         let [file] = files.as_slice() else {
             return Err(AppError::InvalidInput(
@@ -550,35 +451,26 @@ impl TaskService {
 
     /// Gracefully pauses a task (waits for piece boundary).
     pub async fn pause(&self, gid: &str) -> Result<String, AppError> {
+        let _mutation = self.mutation.lock().await;
         self.call("pause", vec![gid.into()]).await
     }
 
     /// Forcefully pauses a task immediately.
     pub async fn force_pause(&self, gid: &str) -> Result<String, AppError> {
+        let _mutation = self.mutation.lock().await;
         self.tasks.set_automatic(gid, false).await;
         self.call("forcePause", vec![gid.into()]).await
     }
 
     /// Resumes a paused task.
     pub async fn unpause(&self, gid: &str) -> Result<String, AppError> {
-        self.recheck_before_resume(gid).await?;
         self.call("unpause", vec![gid.into()]).await
     }
 
-    async fn recheck_before_resume(&self, gid: &str) -> Result<(), AppError> {
-        let recheck = self
-            .files
-            .lock()
-            .map_err(|_| AppError::Io("File monitor lock poisoned".into()))?
-            .needs_recheck(gid);
-        if recheck && self.tell_status(gid).await?.bittorrent.is_some() {
-            self.force_bt_recheck(gid).await?;
-            self.files
-                .lock()
-                .map_err(|_| AppError::Io("File monitor lock poisoned".into()))?
-                .rechecked(gid);
-        }
-        Ok(())
+    /// User controls share the submission boundary; native media selection already owns it.
+    pub async fn resume_task(&self, gid: &str) -> Result<String, AppError> {
+        let _mutation = self.mutation.lock().await;
+        self.unpause(gid).await
     }
 
     /// Forcefully removes a task.

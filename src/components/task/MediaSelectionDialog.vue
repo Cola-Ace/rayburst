@@ -156,10 +156,10 @@ onBeforeUnmount(() => {
       </Transition>
       <template #footer>
         <NSpace justify="end">
-          <NButton :disabled="submitting" @click="dismiss">{{ t('task.magnet-choose-later') }}</NButton>
+          <NButton :disabled="submitting" @click="dismiss">{{ t('media.choose-later') }}</NButton>
           <NButton v-if="error && !ready" :loading="loading" @click="load(gid)">{{ t('task.retry-task') }}</NButton>
           <NButton v-else type="primary" :loading="submitting" :disabled="!ready" @click="confirm">{{
-            media?.live === 'true' ? t('media.start-recording') : t('task.magnet-start-download')
+            media?.live === 'true' ? t('media.start-recording') : t('media.start-download')
           }}</NButton>
         </NSpace>
       </template>

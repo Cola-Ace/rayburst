@@ -6,12 +6,10 @@ import LinearProgress from '@/components/common/LinearProgress.vue'
 import { TASK_STATUS } from '@shared/constants'
 import { bytesToSize, calcProgress, getTaskCompletedLength, timeFormat, timeRemaining } from '@shared/utils'
 import type { Aria2Task } from '@shared/types'
-import type { TaskTransferSummary } from '@/composables/useTaskDetailSummary'
 import TaskGraphic from '../TaskGraphic.vue'
 
 const props = defineProps<{
   task: Aria2Task | null
-  transferSummary: TaskTransferSummary
 }>()
 
 const { t } = useI18n()
@@ -53,18 +51,6 @@ const remainingText = computed(() => {
       </NDescriptionsItem>
       <NDescriptionsItem :label="t('task.task-download-speed') || 'DL Speed'">
         {{ bytesToSize(task.downloadSpeed) }}/s
-      </NDescriptionsItem>
-      <NDescriptionsItem v-if="transferSummary.showUploadMetrics" :label="t('task.task-upload-speed') || 'UL Speed'">
-        {{ bytesToSize(task.uploadSpeed) }}/s
-      </NDescriptionsItem>
-      <NDescriptionsItem v-if="transferSummary.showUploadMetrics" :label="t('task.task-upload-length') || 'Uploaded'">
-        {{ bytesToSize(task.uploadLength) }}
-      </NDescriptionsItem>
-      <NDescriptionsItem v-if="transferSummary.showUploadMetrics" :label="t('task.task-ratio') || 'Ratio'">
-        {{ transferSummary.ratio }}
-      </NDescriptionsItem>
-      <NDescriptionsItem v-if="transferSummary.showSeeders" :label="t('task.task-num-seeders') || 'Seeders'">
-        {{ task.numSeeders }}
       </NDescriptionsItem>
       <NDescriptionsItem :label="t('task.task-connections') || 'Connections'">
         {{ task.connections }}

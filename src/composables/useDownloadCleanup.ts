@@ -1,10 +1,10 @@
-/** @fileoverview Utilities for stale record detection and original torrent file removal.
+/** @fileoverview Utilities for stale record detection.
  *
  * Pure, testable functions — side effects (FS access) are injected via imports.
  */
 import { join } from '@tauri-apps/api/path'
 import { invoke } from '@tauri-apps/api/core'
-import { deletePath } from '@/composables/useFileDelete'
+
 import { logger } from '@shared/logger'
 
 /** Record shape needed for stale detection (not the full HistoryRecord). */
@@ -58,20 +58,4 @@ export async function findStaleRecords(records: StaleCheckItem[]): Promise<strin
   }
 
   return staleGids
-}
-
-export async function trashTorrentFile(path: string): Promise<boolean> {
-  if (!path) return false
-
-  try {
-    return await deletePath(path, 'trash')
-  } catch (error) {
-    logger.warn('trashTorrentFile', `Failed to trash ${path}: ${error}`)
-    return false
-  }
-}
-
-/** Check whether the "delete torrent after complete" setting is enabled. */
-export function shouldDeleteTorrent(config: Partial<{ deleteTorrentAfterComplete: boolean }>): boolean {
-  return config.deleteTorrentAfterComplete === true
 }

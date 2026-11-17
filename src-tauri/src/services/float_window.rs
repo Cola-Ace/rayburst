@@ -2,7 +2,7 @@
 //!
 //! A small orb that stays on top with the overall speed and progress, so
 //! downloads can be followed without the main window. A click opens a panel
-//! beside it to follow and control each download, and links or torrents dropped
+//! beside it to follow and control each download, and links dropped
 //! on it open the add window. Its mode keeps it always, only while files
 //! download, or never; the pump opens and closes both windows accordingly and
 //! feeds them each snapshot.
@@ -61,7 +61,7 @@ const LINGER: Duration = Duration::from_millis(2400);
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     Always,
-    /// While files download; paused and seeding tasks do not count.
+    /// While files download; paused tasks do not count.
     Downloading,
     #[default]
     #[serde(other)]
@@ -282,7 +282,7 @@ impl FloatWindow {
 }
 
 fn downloading(task: &Aria2Task) -> bool {
-    task.status == "active" && task.seeder.as_deref() != Some("true")
+    task.status == "active"
 }
 
 /// In `downloading` mode the orb comes with the first download and leaves a

@@ -9,7 +9,7 @@ import { usePreferenceNumericValidation } from '@/composables/usePreferenceNumer
 import { useSystemProxyDetect } from '@/composables/useSystemProxyDetect'
 import { getErrorMessage } from '@shared/utils/errorMessage'
 import { useAppMessage } from '@/composables/useAppMessage'
-import { PROXY_SCOPE_OPTIONS, PROXY_SCOPES } from '@shared/constants'
+import { PROXY_SCOPE_OPTIONS } from '@shared/constants'
 import {
   buildNetworkForm,
   buildNetworkSystemConfig,
@@ -58,9 +58,6 @@ const proxyScopeOptions = PROXY_SCOPE_OPTIONS.map((s: string) => ({
   label: t(`preferences.proxy-scope-${s}`),
   value: s,
 }))
-
-// BitTorrent's proxy is set once for the engine, so it cannot follow the system's.
-const systemProxyScopeOptions = proxyScopeOptions.filter((option) => option.value !== PROXY_SCOPES.BITTORRENT)
 
 // ── Proxy detection ─────────────────────────────────────────────────
 const { detecting: detectingProxy, detect: detectProxy } = useSystemProxyDetect({
@@ -158,7 +155,7 @@ onMounted(() => {
         <NDivider title-placement="left">{{ t('preferences.proxy') }}</NDivider>
         <NFormItem>
           <template #label>
-            <PreferenceHintLabel :label="t('task.use-proxy')" :hint="t('preferences.proxy-request-scope-hint')" />
+            <span>{{ t('task.use-proxy') }}</span>
           </template>
           <NSwitch :value="form.proxy.mode !== 'direct'" @update:value="handleProxySwitch" />
         </NFormItem>
@@ -166,10 +163,7 @@ onMounted(() => {
           <div class="proxy-collapse__inner collapse-indent">
             <NFormItem>
               <template #label>
-                <PreferenceHintLabel
-                  :label="t('preferences.proxy-source')"
-                  :hint="t('preferences.proxy-source-system-hint')"
-                />
+                <span>{{ t('preferences.proxy-source') }}</span>
               </template>
               <NRadioGroup v-model:value="form.proxy.mode" size="small">
                 <NRadioButton value="system">{{ t('preferences.proxy-source-system') }}</NRadioButton>
@@ -178,10 +172,7 @@ onMounted(() => {
             </NFormItem>
             <NFormItem v-if="form.proxy.mode === 'manual'">
               <template #label>
-                <PreferenceHintLabel
-                  :label="t('preferences.proxy-server')"
-                  :hint="t('preferences.proxy-protocol-hint')"
-                />
+                <span>{{ t('preferences.proxy-server') }}</span>
               </template>
               <NInputGroup>
                 <NInput v-model:value="form.proxy.server" class="pref-control-full" placeholder="http://host:port" />
@@ -214,7 +205,7 @@ onMounted(() => {
             <NFormItem :label="t('preferences.proxy-scope')">
               <NSelect
                 v-model:value="form.proxy.scope"
-                :options="form.proxy.mode === 'system' ? systemProxyScopeOptions : proxyScopeOptions"
+                :options="form.proxy.mode === 'system' ? proxyScopeOptions : proxyScopeOptions"
                 multiple
                 class="pref-control-full"
               />
@@ -313,9 +304,6 @@ onMounted(() => {
 
         <!-- Connection -->
         <NDivider title-placement="left">{{ t('preferences.connection-section') }}</NDivider>
-        <NFormItem label="UPnP/NAT-PMP">
-          <NSwitch v-model:value="form.enableUpnp" />
-        </NFormItem>
 
         <NFormItem
           :label="t('preferences.connect-timeout')"

@@ -66,7 +66,7 @@ pub struct Pump {
     detailed: Mutex<Option<String>>,
 }
 
-/// Files a WebView snapshot carries per task. A torrent can hold tens of
+/// Files a WebView snapshot carries per task. A multi-file task can hold tens of
 /// thousands; serializing them every tick froze the window.
 const SNAPSHOT_FILES: usize = 64;
 
@@ -232,11 +232,6 @@ impl Pump {
             None => *monitor = Some(Monitor::new(&queued)),
         }
 
-        if view.window {
-            if let Err(error) = super::tasks::bittorrent::decorate(app, &mut tasks).await {
-                log::warn!("pump: selection state unavailable: {error}");
-            }
-        }
         let detailed = self
             .detailed
             .lock()
@@ -267,7 +262,6 @@ fn stat_update(stat: &Aria2GlobalStat) -> StatUpdate {
     let number = |value: &str| value.parse::<u64>().unwrap_or(0);
     StatUpdate {
         download_speed: number(&stat.download_speed),
-        upload_speed: number(&stat.upload_speed),
         num_active: number(&stat.num_active),
         num_waiting: number(&stat.num_waiting),
         num_stopped: number(&stat.num_stopped),
@@ -325,7 +319,6 @@ mod tests {
     fn stat_strings_parse_and_garbage_reads_as_zero() {
         let stat = Aria2GlobalStat {
             download_speed: "1048576".into(),
-            upload_speed: "x".into(),
             num_active: "2".into(),
             num_waiting: "1".into(),
             num_stopped: "3".into(),
@@ -333,7 +326,6 @@ mod tests {
         };
         let update = stat_update(&stat);
         assert_eq!(update.download_speed, 1_048_576);
-        assert_eq!(update.upload_speed, 0);
         assert_eq!(update.num_active, 2);
         assert_eq!(update.num_stopped_total, 4);
     }

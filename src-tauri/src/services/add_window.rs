@@ -1,7 +1,7 @@
 //! The standalone add-task window.
 //!
 //! Every new download is confirmed in one small, movable window, the way
-//! download managers confirm a browser click: links, torrent files, browser
+//! download managers confirm a browser click: links, browser
 //! handoffs and manual entry alike. It opens over the main window while that is
 //! in view, and on the screen under the pointer otherwise.
 //!
@@ -32,7 +32,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const PANEL_INSET: f64 = if cfg!(target_os = "macos") { 0.0 } else { 16.0 };
 
 /// Inputs for the add window: structured browser handoffs, plain links and
-/// torrent paths, batch items prepared by the main window, and a request for
+/// batch items prepared by the main window, and a request for
 /// an empty dialog.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -618,10 +618,15 @@ mod tests {
         let state = AddWindowState::default();
         {
             let mut inner = state.lock();
-            inner.queue.append(links(&["magnet:?xt=a", "magnet:?xt=b"]));
-            inner.queue.append(links(&["magnet:?xt=a"]));
+            inner
+                .queue
+                .append(links(&["https://example.test/a", "https://example.test/b"]));
+            inner.queue.append(links(&["https://example.test/a"]));
         }
-        assert_eq!(attach(&state), links(&["magnet:?xt=a", "magnet:?xt=b"]));
+        assert_eq!(
+            attach(&state),
+            links(&["https://example.test/a", "https://example.test/b"])
+        );
         assert!(attach(&state).is_empty());
     }
 
@@ -633,8 +638,11 @@ mod tests {
         assert!(!state.lock().ready);
 
         attach(&state);
-        state.lock().queue.append(links(&["magnet:?xt=c"]));
-        assert_eq!(detach(&state), links(&["magnet:?xt=c"]));
+        state
+            .lock()
+            .queue
+            .append(links(&["https://example.test/c"]));
+        assert_eq!(detach(&state), links(&["https://example.test/c"]));
         assert!(state.lock().ready);
     }
 
@@ -645,13 +653,13 @@ mod tests {
             let mut inner = state.lock();
             inner.generation = 2;
             inner.opening = true;
-            inner.queue.append(links(&["magnet:?xt=d"]));
+            inner.queue.append(links(&["https://example.test/d"]));
         }
         assert!(!abandon(&state, 1));
         assert!(abandon(&state, 2));
         assert!(!state.lock().opening);
         assert!(state.lock().stalled);
-        assert_eq!(attach(&state), links(&["magnet:?xt=d"]));
+        assert_eq!(attach(&state), links(&["https://example.test/d"]));
 
         state.lock().opening = true;
         assert!(!abandon(&state, 2));

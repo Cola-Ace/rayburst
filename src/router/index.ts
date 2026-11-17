@@ -35,16 +35,6 @@ const router = createRouter({
               component: () => import('@/components/preference/Downloads.vue'),
             },
             {
-              path: 'bt',
-              name: 'preference-bt',
-              component: () => import('@/components/preference/BitTorrent.vue'),
-            },
-            {
-              path: 'ed2k',
-              name: 'preference-ed2k',
-              component: () => import('@/components/preference/Ed2k.vue'),
-            },
-            {
               path: 'network',
               name: 'preference-network',
               component: () => import('@/components/preference/Network.vue'),

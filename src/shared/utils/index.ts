@@ -1,7 +1,6 @@
 /** @fileoverview Barrel re-export for all utility sub-modules. */
 
 export * from './format'
-export * from './peer'
 export * from './task'
 export * from './file'
 export * from './config'

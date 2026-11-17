@@ -3,7 +3,6 @@
 import { watch } from 'vue'
 import { useMounted } from '@vueuse/core'
 import { useTaskSelectionStore } from '@/stores/taskSelection'
-import BtSelectionDialog from './BtSelectionDialog.vue'
 import MediaSelectionDialog from './MediaSelectionDialog.vue'
 const props = defineProps<{ blocked: boolean }>()
 const selection = useTaskSelectionStore()
@@ -18,12 +17,6 @@ watch(
 </script>
 
 <template>
-  <BtSelectionDialog
-    :gid="selection.current?.kind === 'bt' ? selection.current.gid : ''"
-    :show="mounted && selection.visible && selection.current?.kind === 'bt'"
-    @close="selection.close"
-    @after-leave="selection.afterLeave"
-  />
   <MediaSelectionDialog
     :gid="selection.current?.kind === 'media' ? selection.current.gid : ''"
     :show="mounted && selection.visible && selection.current?.kind === 'media'"

@@ -13,7 +13,6 @@ import { TASK_STATUS } from '@shared/constants'
 import type { Aria2Task } from '@shared/types'
 import type { I18nKey } from '@shared/i18nTypes'
 import { canFinishMedia } from '@shared/utils/media'
-import { getTaskSharingState } from '@shared/utils/task'
 
 import { logger } from '@shared/logger'
 import { getErrorMessage } from '@shared/utils/errorMessage'
@@ -114,9 +113,6 @@ const hasActiveTasks = computed(() =>
 )
 const hasPausedTasks = computed(() =>
   taskStore.taskList.some((t: { status: string }) => t.status === TASK_STATUS.PAUSED),
-)
-const sharingGids = computed(() =>
-  taskStore.taskList.filter((task) => getTaskSharingState(task) !== null).map((task) => task.gid),
 )
 
 /** Active and all views show resume, pause, and delete actions. */
@@ -265,45 +261,6 @@ function pauseAll() {
       } catch (error) {
         logger.warn('TaskActions.pauseAll', getErrorMessage(error))
         message.error(t('task.pause-all-task-fail'))
-      } finally {
-        d.destroy()
-      }
-      return false
-    },
-  })
-}
-
-function finishAllSharing() {
-  if (!isEngineReady()) {
-    message.warning(t('app.engine-not-ready'))
-    return
-  }
-  const gids = [...sharingGids.value]
-  if (gids.length === 0) return
-  const d = dialog.warning({
-    title: t('task.finish-all-sharing'),
-    content: t('task.finish-all-sharing-confirm', { count: gids.length }),
-    positiveText: t('app.yes'),
-    negativeText: t('app.no'),
-    onPositiveClick: async () => {
-      await lockDialog(d)
-      try {
-        const result = await taskStore.finishSharingTasks(gids)
-        if (result.failed.length === 0) {
-          message.success(t('task.finish-all-sharing-success', { count: result.succeeded.length }))
-        } else if (result.succeeded.length > 0) {
-          message.warning(
-            t('task.finish-all-sharing-partial', {
-              finished: result.succeeded.length,
-              failed: result.failed.length,
-            }),
-          )
-        } else {
-          message.error(t('task.finish-all-sharing-fail'))
-        }
-      } catch (error) {
-        logger.warn('TaskActions.finishAllSharing', getErrorMessage(error))
-        message.error(t('task.finish-all-sharing-fail'))
       } finally {
         d.destroy()
       }
@@ -518,13 +475,6 @@ const batchOptions = computed<BatchAction[]>(() => {
         icon: menuIcon(PauseOutline),
         disabled: !hasActiveTasks.value,
         action: pauseAll,
-      },
-      {
-        key: 'sharing',
-        label: t('task.finish-all-sharing'),
-        icon: menuIcon(StopCircleOutline),
-        disabled: !sharingGids.value.length,
-        action: finishAllSharing,
       },
     )
     if (recordingGids.value.length)

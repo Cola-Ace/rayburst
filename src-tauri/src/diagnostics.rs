@@ -131,29 +131,21 @@ pub(crate) async fn runtime_snapshot(app: &tauri::AppHandle, raw_config: Option<
     let supervisor = app
         .try_state::<EngineSupervisor>()
         .map(|state| state.snapshot());
-    let (engine_version, global_stat, bt_session) =
-        if let Some(state) = app.try_state::<TaskServiceState>() {
-            let version =
-                tokio::time::timeout(std::time::Duration::from_secs(2), state.0.get_version())
-                    .await
-                    .ok()
-                    .and_then(Result::ok);
-            let global =
-                tokio::time::timeout(std::time::Duration::from_secs(2), state.0.get_global_stat())
-                    .await
-                    .ok()
-                    .and_then(Result::ok);
-            let bt = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                state.0.get_bt_session_status(),
-            )
-            .await
-            .ok()
-            .and_then(Result::ok);
-            (version, global, bt)
-        } else {
-            (None, None, None)
-        };
+    let (engine_version, global_stat) = if let Some(state) = app.try_state::<TaskServiceState>() {
+        let version =
+            tokio::time::timeout(std::time::Duration::from_secs(2), state.0.get_version())
+                .await
+                .ok()
+                .and_then(Result::ok);
+        let global =
+            tokio::time::timeout(std::time::Duration::from_secs(2), state.0.get_global_stat())
+                .await
+                .ok()
+                .and_then(Result::ok);
+        (version, global)
+    } else {
+        (None, None)
+    };
     let preferences = raw_config.and_then(|value| value.get("preferences"));
     let native_messaging = crate::native_messaging::diagnostic_snapshot(app).await;
     let protocol_handlers = crate::commands::protocol::protocol_diagnostics(app).await;
@@ -178,7 +170,6 @@ pub(crate) async fn runtime_snapshot(app: &tauri::AppHandle, raw_config: Option<
             "log_level": preferences.and_then(|value| value.get("aria2LogLevel")).and_then(Value::as_str),
             "version": engine_version,
             "global_stat": global_stat,
-            "bt_session": bt_session,
             "supervisor": supervisor,
         },
         "rendering": rendering,

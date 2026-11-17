@@ -145,20 +145,18 @@ describe('formatLimitBadge', () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('hasConfiguredLimit', () => {
-  it('returns false when both limits are "0"', () => {
+  it('returns false when download limit is "0"', () => {
     const config = {
       ...createDefaultAppConfig(),
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
     } as AppConfig
     expect(hasConfiguredLimit(config)).toBe(false)
   })
 
-  it('returns false when both limits are empty strings', () => {
+  it('returns false when download limit is empty strings', () => {
     const config = {
       ...createDefaultAppConfig(),
       maxOverallDownloadLimit: '',
-      maxOverallUploadLimit: '',
     } as AppConfig
     expect(hasConfiguredLimit(config)).toBe(false)
   })
@@ -167,25 +165,14 @@ describe('hasConfiguredLimit', () => {
     const config = {
       ...createDefaultAppConfig(),
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '0',
     } as AppConfig
     expect(hasConfiguredLimit(config)).toBe(true)
   })
 
-  it('returns true when upload limit is set', () => {
-    const config = {
-      ...createDefaultAppConfig(),
-      maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '512K',
-    } as AppConfig
-    expect(hasConfiguredLimit(config)).toBe(true)
-  })
-
-  it('returns true when both limits are set', () => {
+  it('returns true when download limit is set', () => {
     const config = {
       ...createDefaultAppConfig(),
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
     } as AppConfig
     expect(hasConfiguredLimit(config)).toBe(true)
   })
@@ -201,7 +188,6 @@ describe('resolveToggleAction', () => {
       ...createDefaultAppConfig(),
       speedLimitEnabled: true,
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
     } as AppConfig
     expect(resolveToggleAction(config)).toBe('disable')
   })
@@ -211,7 +197,6 @@ describe('resolveToggleAction', () => {
       ...createDefaultAppConfig(),
       speedLimitEnabled: false,
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '0',
     } as AppConfig
     expect(resolveToggleAction(config)).toBe('enable')
   })
@@ -221,7 +206,6 @@ describe('resolveToggleAction', () => {
       ...createDefaultAppConfig(),
       speedLimitEnabled: false,
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
     } as AppConfig
     expect(resolveToggleAction(config)).toBe('needs-config')
   })
@@ -231,7 +215,6 @@ describe('resolveToggleAction', () => {
       ...createDefaultAppConfig(),
       speedLimitEnabled: false,
       maxOverallDownloadLimit: '',
-      maxOverallUploadLimit: '',
     } as AppConfig
     expect(resolveToggleAction(config)).toBe('needs-config')
   })
@@ -256,13 +239,12 @@ describe('toggleSpeedLimit', () => {
     return toggleSpeedLimit
   }
 
-  it('disables limit by sending 0/0 to aria2 and updating store', async () => {
+  it('disables limit by sending 0 to aria2 and updating store', async () => {
     const toggleSpeedLimit = await loadToggle()
     const config = {
       ...createDefaultAppConfig(),
       speedLimitEnabled: true,
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
     } as AppConfig
 
     const result = await toggleSpeedLimit(config, {
@@ -274,7 +256,6 @@ describe('toggleSpeedLimit', () => {
     // Must send '0' to aria2 to remove limits
     expect(mockChangeGlobalOption).toHaveBeenCalledWith({
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
     })
     expect(mockUpdateAndSave).toHaveBeenCalledWith({ speedLimitEnabled: false })
   })
@@ -285,7 +266,6 @@ describe('toggleSpeedLimit', () => {
       ...createDefaultAppConfig(),
       speedLimitEnabled: false,
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
     } as AppConfig
 
     const result = await toggleSpeedLimit(config, {
@@ -296,7 +276,6 @@ describe('toggleSpeedLimit', () => {
     expect(result).toBe('enabled')
     expect(mockChangeGlobalOption).toHaveBeenCalledWith({
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
     })
     expect(mockUpdateAndSave).toHaveBeenCalledWith({ speedLimitEnabled: true })
   })
@@ -307,7 +286,6 @@ describe('toggleSpeedLimit', () => {
       ...createDefaultAppConfig(),
       speedLimitEnabled: false,
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
     } as AppConfig
 
     const result = await toggleSpeedLimit(config, {
@@ -342,57 +320,36 @@ describe('applyCustomLimit', () => {
   it('applies non-zero limits and enables speed limiting', async () => {
     const applyCustomLimit = await loadApply()
 
-    await applyCustomLimit('10M', '512K', {
+    await applyCustomLimit('10M', {
       changeGlobalOption: mockChangeGlobalOption,
       updateAndSave: mockUpdateAndSave,
     })
 
     expect(mockChangeGlobalOption).toHaveBeenCalledWith({
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
     })
     expect(mockUpdateAndSave).toHaveBeenCalledWith({
       maxOverallDownloadLimit: '10M',
-      maxOverallUploadLimit: '512K',
+
       speedLimitEnabled: true,
     })
   })
 
-  it('applies zero download limit (only upload limited)', async () => {
+  it('disables speed limiting when the value is zero', async () => {
     const applyCustomLimit = await loadApply()
 
-    await applyCustomLimit('0', '512K', {
+    await applyCustomLimit('0', {
       changeGlobalOption: mockChangeGlobalOption,
       updateAndSave: mockUpdateAndSave,
     })
 
     expect(mockChangeGlobalOption).toHaveBeenCalledWith({
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '512K',
     })
+    // Zero = no limit = disable the toggle
     expect(mockUpdateAndSave).toHaveBeenCalledWith({
       maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '512K',
-      speedLimitEnabled: true,
-    })
-  })
 
-  it('disables speed limiting when both values are zero', async () => {
-    const applyCustomLimit = await loadApply()
-
-    await applyCustomLimit('0', '0', {
-      changeGlobalOption: mockChangeGlobalOption,
-      updateAndSave: mockUpdateAndSave,
-    })
-
-    expect(mockChangeGlobalOption).toHaveBeenCalledWith({
-      maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
-    })
-    // Both zero = no limit = disable the toggle
-    expect(mockUpdateAndSave).toHaveBeenCalledWith({
-      maxOverallDownloadLimit: '0',
-      maxOverallUploadLimit: '0',
       speedLimitEnabled: false,
     })
   })

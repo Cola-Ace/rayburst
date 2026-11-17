@@ -8,7 +8,6 @@ export interface AdvancedForm {
   rpcListenPort: number
   rpcSecret: string
   extensionDownloadBehavior: AppConfig['extensionDownloadBehavior']
-  extensionTorrentAction: AppConfig['extensionTorrentAction']
   extensionApiPort: number
   extensionApiSecret: string
   allowRemoteAccess: boolean
@@ -23,7 +22,6 @@ export function buildAdvancedForm(config: AppConfig): AdvancedForm {
     rpcListenPort: config.rpcListenPort,
     rpcSecret: config.rpcSecret,
     extensionDownloadBehavior: config.extensionDownloadBehavior,
-    extensionTorrentAction: config.extensionTorrentAction,
     extensionApiPort: config.extensionApiPort,
     extensionApiSecret: config.extensionApiSecret,
     allowRemoteAccess: config.allowRemoteAccess,

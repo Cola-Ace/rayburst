@@ -21,10 +21,9 @@ pnpm install
 pnpm tauri dev    # Start dev server (Tauri + Vite)
 ```
 
-Development mode does not register Native Messaging hosts or change URL protocol
-associations. Start the desktop manually when testing the extension API. Test
-browser activation with an installed build; development must not replace its
-system registrations. This uses Tauri's development mode, not the Rust debug profile.
+The desktop does not register Native Messaging hosts or change URL protocol
+associations. Start the desktop manually when testing the extension API. Browser
+activation requires an externally configured Native Messaging host.
 
 Rust backend (standalone):
 
@@ -63,7 +62,7 @@ Pre-commit hooks (husky + lint-staged) auto-run `eslint --fix` and `prettier --w
 ## 🛡 Error Handling
 
 - **TypeScript**: Never leave `catch` blocks empty — always call `logger.debug()` at minimum.
-- **Rust**: Use the `AppError` enum (`Store`, `Engine`, `Io`, `NotFound`, `Updater`, `Upnp`, `Protocol`, `Aria2`, `Database`) for command return types.
+- **Rust**: Use the `AppError` enum (`Store`, `Engine`, `Io`, `NotFound`, `Updater`, `Protocol`, `Aria2`, `Database`) for command return types.
 
 ## 🧪 Testing
 
@@ -92,9 +91,9 @@ Desktop translations live in `src/shared/locales/<locale>/messages.json`. Each f
 Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-feat: add torrent file selection
-fix: handle empty bitfield in peer parser
-refactor: extract TorrentUpload sub-component
+feat: add media track selection
+fix: handle empty download progress bitfields
+refactor: extract download options component
 test: add rename utility tests
 docs: update CONTRIBUTING guidelines
 ```
@@ -130,7 +129,7 @@ PR titles must follow [Conventional Commits](https://www.conventionalcommits.org
 ```
 feat(macos): add native traffic light toggle
 fix: handle null errorCode in task notification
-refactor: extract tracker sync into composable
+refactor: extract update checks into composable
 docs: update i18n translation guide
 ```
 

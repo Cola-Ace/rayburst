@@ -3,35 +3,28 @@
 //! These commands serve as the invoke() transport layer. Each command maps
 //! to one or more aria2 RPC methods.
 
-use crate::aria2::types::{
-    Aria2BtPeerAddResult, Aria2BtTrackerConfig, Aria2File, Aria2Task, Aria2TorrentInspection,
-};
+use crate::aria2::types::{Aria2File, Aria2Task};
 use crate::database::{Database, DatabaseState};
 use crate::error::AppError;
 use crate::services::tasks::{TaskService, TaskServiceState};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager, State};
-use tauri_plugin_store::StoreExt;
-
-const ED2K_SEARCH_TEMP_PREFIX: &str = "rayburst-ed2k-search-";
+use tauri::{AppHandle, State};
 
 /// Fetch task list by type.
 #[tauri::command]
 pub async fn aria2_fetch_task_list(
-    app: AppHandle,
     state: State<'_, TaskServiceState>,
     r#type: String,
     limit: Option<i64>,
 ) -> Result<Vec<Aria2Task>, AppError> {
-    let mut tasks = match r#type.as_str() {
+    let tasks = match r#type.as_str() {
         "all" => state.0.tell_task_snapshot(true).await,
         "active" => state.0.tell_task_snapshot(false).await,
         "waiting" => state.0.tell_waiting(0, limit.unwrap_or(1000)).await,
         _ => state.0.tell_stopped(0, limit.unwrap_or(1000)).await,
     }?;
-    crate::services::tasks::bittorrent::decorate(&app, &mut tasks).await?;
     Ok(state.0.tasks.visible_tasks(tasks).await)
 }
 
@@ -53,26 +46,6 @@ pub fn tasks_set_detailed(
     pump.set_detailed(gid);
 }
 
-#[tauri::command]
-pub async fn aria2_select_bt_files(
-    app: AppHandle,
-    state: State<'_, TaskServiceState>,
-    gid: String,
-    indices: Vec<u32>,
-) -> Result<(), AppError> {
-    crate::services::tasks::bittorrent::select(&app, &state.0, &gid, indices, false).await
-}
-
-#[tauri::command]
-pub async fn aria2_defer_bt_selection(
-    state: State<'_, TaskServiceState>,
-    history: State<'_, DatabaseState>,
-    gid: String,
-) -> Result<(), AppError> {
-    let _mutation = state.0.mutation.lock().await;
-    history.0.defer_bt_selection(&gid, true).await
-}
-
 /// Fetch only active tasks (no waiting).
 #[tauri::command]
 pub async fn aria2_fetch_active_task_list(
@@ -90,24 +63,6 @@ pub async fn aria2_fetch_task_item(
     state.0.tell_status(&gid).await
 }
 
-/// Fetch task status with peer list (for BT tasks).
-#[tauri::command]
-pub async fn aria2_fetch_task_item_with_peers(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-) -> Result<serde_json::Value, AppError> {
-    let task = state.0.tell_status(&gid).await?;
-    let peers = if task.bittorrent.is_some() {
-        state.0.get_peers(&gid).await?
-    } else {
-        serde_json::json!([])
-    };
-    let mut result =
-        serde_json::to_value(&task).map_err(|e| AppError::Aria2(format!("serialize task: {e}")))?;
-    result["peers"] = peers;
-    Ok(result)
-}
-
 /// Get aria2 engine version and enabled features.
 #[tauri::command]
 pub async fn aria2_get_version(
@@ -116,7 +71,7 @@ pub async fn aria2_get_version(
     state.0.get_version().await
 }
 
-/// Get global download/upload statistics.
+/// Get global download statistics.
 #[tauri::command]
 pub async fn aria2_get_global_stat(
     state: State<'_, TaskServiceState>,
@@ -131,23 +86,7 @@ pub async fn aria2_change_global_option(
     state: State<'_, TaskServiceState>,
     options: serde_json::Map<String, serde_json::Value>,
 ) -> Result<String, AppError> {
-    let endpoint_changed = options.contains_key("listen-port")
-        || options.contains_key("bt-external-ip")
-        || options.contains_key("bt-external-port");
-    let result = state.0.change_global_option(options).await?;
-    if endpoint_changed {
-        match state.0.get_bt_session_status().await {
-            Ok(endpoint) => log::info!(
-                "aria2:bt-session listen_port={} announce_port={} endpoints={} external_ip_configured={}",
-                endpoint.listen_port,
-                endpoint.announce_port,
-                endpoint.listen_endpoints.len(),
-                !endpoint.external_ip.is_empty()
-            ),
-            Err(error) => log::debug!("aria2:bt-session diagnostics unavailable after option update: {error}"),
-        }
-    }
-    Ok(result)
+    state.0.change_global_option(options).await
 }
 
 /// Get per-task options.
@@ -200,15 +139,6 @@ pub async fn aria2_get_redirect_target(
     state.0.redirect_target(&gid).await
 }
 
-#[tauri::command]
-pub async fn aria2_get_bt_trackers(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-) -> Result<serde_json::Value, AppError> {
-    let trackers = state.0.get_bt_trackers(&gid).await?;
-    serde_json::to_value(trackers).map_err(|e| AppError::Aria2(format!("serialize trackers: {e}")))
-}
-
 /// Moves an unfinished download to another directory (#696).
 #[tauri::command]
 pub async fn aria2_move_download(
@@ -220,41 +150,6 @@ pub async fn aria2_move_download(
         return Err(AppError::InvalidInput("Choose a folder to move to".into()));
     }
     state.0.move_download(&gid, &dir).await
-}
-
-#[tauri::command]
-pub async fn aria2_force_bt_recheck(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-) -> Result<String, AppError> {
-    state.0.force_bt_recheck(&gid).await
-}
-
-#[tauri::command]
-pub async fn aria2_replace_bt_trackers(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-    trackers: Vec<Aria2BtTrackerConfig>,
-) -> Result<String, AppError> {
-    state.0.replace_bt_trackers(&gid, trackers).await
-}
-
-#[tauri::command]
-pub async fn aria2_replace_bt_web_seeds(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-    web_seeds: Vec<String>,
-) -> Result<String, AppError> {
-    state.0.replace_bt_web_seeds(&gid, web_seeds).await
-}
-
-#[tauri::command]
-pub async fn aria2_add_bt_peers(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-    peers: Vec<String>,
-) -> Result<Aria2BtPeerAddResult, AppError> {
-    state.0.add_bt_peers(&gid, peers).await
 }
 
 /// A task that already downloads, or downloaded, one of the requested URIs.
@@ -353,198 +248,7 @@ pub async fn aria2_add_uri(
     options: serde_json::Value,
     request_id: Option<String>,
 ) -> Result<String, AppError> {
-    crate::services::downloads::submit(
-        &app,
-        crate::services::downloads::TaskInput::Uris(uris),
-        options,
-        request_id.as_deref(),
-    )
-    .await
-}
-
-/// Add a torrent download from base64-encoded content.
-#[tauri::command]
-pub async fn aria2_add_torrent(
-    app: AppHandle,
-    torrent: String,
-    options: serde_json::Value,
-    request_id: Option<String>,
-) -> Result<String, AppError> {
-    crate::services::downloads::submit(
-        &app,
-        crate::services::downloads::TaskInput::Torrent(torrent),
-        options,
-        request_id.as_deref(),
-    )
-    .await
-}
-
-/// Inspect torrent metainfo without creating a task or writing engine state.
-#[tauri::command]
-pub async fn aria2_inspect_torrent(
-    state: State<'_, TaskServiceState>,
-    torrent: String,
-) -> Result<Aria2TorrentInspection, AppError> {
-    state.0.inspect_torrent(&torrent).await
-}
-
-/// Start an ED2K search and return the search GID.
-#[tauri::command]
-pub async fn aria2_ed2k_search(
-    app: AppHandle,
-    state: State<'_, TaskServiceState>,
-    keyword: String,
-    mut options: serde_json::Value,
-) -> Result<String, AppError> {
-    let keyword = keyword.trim();
-    if keyword.is_empty() {
-        return Err(AppError::Aria2("ED2K search keyword is empty".into()));
-    }
-    log::info!("aria2:ed2k-search");
-    cleanup_stale_ed2k_search_dirs(&app);
-    let search_dir = create_ed2k_search_temp_dir(&app)?;
-    ensure_json_object(&mut options).insert(
-        "dir".to_string(),
-        serde_json::Value::String(crate::engine::path_to_safe_string(&search_dir)),
-    );
-    crate::commands::ed2k::inject_managed_ed2k_bootstrap_options(&app, &mut options)?;
-    let gid = match state.0.ed2k_search(keyword, options).await {
-        Ok(gid) => gid,
-        Err(e) => {
-            cleanup_ed2k_search_dir(&search_dir);
-            return Err(e);
-        }
-    };
-    register_ed2k_search_dir(&app, &gid, &search_dir);
-    Ok(gid)
-}
-
-/// Return ED2K search results by search GID.
-#[tauri::command]
-pub async fn aria2_get_ed2k_search_results(
-    state: State<'_, TaskServiceState>,
-    gid: String,
-) -> Result<serde_json::Value, AppError> {
-    state.0.get_ed2k_search_results(&gid).await
-}
-
-/// Remove an internal ED2K search request group and its temporary files.
-#[tauri::command]
-pub async fn aria2_cleanup_ed2k_search(
-    app: AppHandle,
-    state: State<'_, TaskServiceState>,
-    gid: String,
-) -> Result<(), AppError> {
-    state.0.cleanup_ed2k_search(&gid).await?;
-    cleanup_ed2k_search_files(&app, &gid);
-    Ok(())
-}
-
-fn ensure_json_object(
-    value: &mut serde_json::Value,
-) -> &mut serde_json::Map<String, serde_json::Value> {
-    if !value.is_object() {
-        *value = serde_json::Value::Object(serde_json::Map::new());
-    }
-    value
-        .as_object_mut()
-        .expect("value was normalized to object")
-}
-
-fn ed2k_search_temp_root(app: &AppHandle) -> Result<PathBuf, AppError> {
-    let configured = app
-        .store("config.json")
-        .ok()
-        .and_then(|store| store.get("preferences"))
-        .and_then(|prefs| {
-            prefs
-                .get("tempFilesDir")?
-                .as_str()
-                .map(str::trim)
-                .map(str::to_string)
-        })
-        .filter(|path| !path.is_empty());
-
-    if let Some(path) = configured {
-        Ok(PathBuf::from(path))
-    } else {
-        app.path()
-            .temp_dir()
-            .map_err(|e| AppError::Io(e.to_string()))
-    }
-}
-
-fn create_ed2k_search_temp_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
-    let root = ed2k_search_temp_root(app)?;
-    tempfile::Builder::new()
-        .prefix(ED2K_SEARCH_TEMP_PREFIX)
-        .tempdir_in(root)
-        .map(tempfile::TempDir::keep)
-        .map_err(AppError::from)
-}
-
-fn cleanup_ed2k_search_files(app: &AppHandle, gid: &str) {
-    let Some(search_dir) = take_ed2k_search_dir(app, gid) else {
-        return;
-    };
-    cleanup_ed2k_search_dir(&search_dir);
-}
-
-fn cleanup_ed2k_search_dir(path: &Path) {
-    match std::fs::remove_dir_all(path) {
-        Ok(()) => log::debug!("ed2k: removed search temp dir {}", path.display()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => log::debug!(
-            "ed2k: search temp dir cleanup skipped path={} error={}",
-            path.display(),
-            e
-        ),
-    }
-}
-
-fn cleanup_stale_ed2k_search_dirs(app: &AppHandle) {
-    let Ok(root) = ed2k_search_temp_root(app) else {
-        return;
-    };
-    let Ok(entries) = std::fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|v| v.to_str()) else {
-            continue;
-        };
-        if name.starts_with(ED2K_SEARCH_TEMP_PREFIX) {
-            cleanup_ed2k_search_dir(&path);
-        }
-    }
-}
-
-fn is_safe_gid(gid: &str) -> bool {
-    !gid.is_empty() && gid.bytes().all(|b| b.is_ascii_hexdigit())
-}
-
-static ED2K_SEARCH_DIRS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, PathBuf>>> =
-    std::sync::OnceLock::new();
-
-fn ed2k_search_dirs() -> &'static std::sync::Mutex<HashMap<String, PathBuf>> {
-    ED2K_SEARCH_DIRS.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
-}
-
-fn register_ed2k_search_dir(_app: &AppHandle, gid: &str, path: &Path) {
-    if !is_safe_gid(gid) {
-        return;
-    }
-    if let Ok(mut dirs) = ed2k_search_dirs().lock() {
-        dirs.insert(gid.to_string(), path.to_path_buf());
-    }
-}
-
-fn take_ed2k_search_dir(_app: &AppHandle, gid: &str) -> Option<PathBuf> {
-    if !is_safe_gid(gid) {
-        return None;
-    }
-    ed2k_search_dirs().lock().ok()?.remove(gid)
+    crate::services::downloads::submit(&app, uris, options, request_id.as_deref()).await
 }
 
 /// Forcefully remove a task by GID.
@@ -587,12 +291,6 @@ async fn remove_engine_task(client: &TaskService, gid: &str) -> Result<(), AppEr
     tokio::time::timeout(std::time::Duration::from_secs(5), operation)
         .await
         .map_err(|_| AppError::Aria2(format!("Task {gid} did not finish removal")))?
-}
-
-fn is_p2p_sharing_task(task: &Aria2Task) -> bool {
-    matches!(task.status.as_str(), "active" | "paused")
-        && (task.bittorrent.is_some() || task.ed2k.is_some())
-        && task.seeder.as_deref() == Some("true")
 }
 
 #[derive(Debug, Deserialize)]
@@ -710,7 +408,6 @@ async fn delete_task(
     }
     remove_engine_task(client, gid).await?;
     client.tasks.mark_deleted(gid);
-    history.remove_bt_selection(gid).await?;
     if let Some(mode) = delete_mode {
         tokio::task::spawn_blocking(move || {
             let protected = protected_tasks
@@ -723,30 +420,6 @@ async fn delete_task(
         .map_err(|error| AppError::Io(error.to_string()))??;
     }
     history.remove_task_records(gid).await
-}
-
-async fn finish_sharing_task(
-    client: &TaskService,
-    history: &Database,
-    gid: &str,
-) -> Result<(), AppError> {
-    let task = client.tell_status(gid).await?;
-    if !is_p2p_sharing_task(&task) {
-        return Err(AppError::Aria2(format!(
-            "GID {gid} is not a P2P sharing task"
-        )));
-    }
-
-    log::info!("aria2:finish-sharing gid={gid}");
-    let event = crate::services::monitor::TaskEvent::from_aria2(&task);
-    let added_at = history.get_task_birth(gid).await?;
-    let record = crate::services::monitor::build_history_record_with_added_at(
-        &event,
-        crate::services::monitor::events::P2P_DOWNLOAD_COMPLETE,
-        added_at,
-    );
-    history.add_record(&record).await?;
-    remove_engine_task(client, gid).await
 }
 
 /// Delete a task regardless of whether it is live, transitioning, or stopped.
@@ -841,67 +514,34 @@ pub async fn aria2_batch_delete_tasks(
     Ok(result)
 }
 
-/// End P2P sharing while preserving downloaded files and the completed history record.
-#[tauri::command]
-pub async fn aria2_finish_sharing(
-    state: State<'_, TaskServiceState>,
-    history: State<'_, DatabaseState>,
-    gid: String,
-) -> Result<(), AppError> {
-    finish_sharing_task(&state.0, &history.0, &gid).await
-}
-
-/// End multiple P2P sharing tasks while preserving files and completed history.
-#[tauri::command]
-pub async fn aria2_batch_finish_sharing(
-    state: State<'_, TaskServiceState>,
-    history: State<'_, DatabaseState>,
-    gids: Vec<String>,
-) -> Result<BatchTaskOperationResult, AppError> {
-    let mut result = BatchTaskOperationResult::default();
-    for gid in gids {
-        let operation = finish_sharing_task(&state.0, &history.0, &gid).await;
-        result.record(gid, operation);
-    }
-    log::info!(
-        "aria2:batch-finish-sharing finished={} failed={}",
-        result.succeeded.len(),
-        result.failed.len()
-    );
-    Ok(result)
-}
-
 /// Forcefully pause a task by GID.
 #[tauri::command]
 pub async fn aria2_force_pause(
-    app: AppHandle,
     state: State<'_, TaskServiceState>,
     gid: String,
 ) -> Result<String, AppError> {
     log::debug!("aria2:force-pause gid={gid}");
-    crate::services::tasks::bittorrent::pause(&app, &state.0, Some(&gid), true).await
+    state.0.force_pause(&gid).await
 }
 
 /// Gracefully pause a task.
 #[tauri::command]
 pub async fn aria2_pause(
-    app: AppHandle,
     state: State<'_, TaskServiceState>,
     gid: String,
 ) -> Result<String, AppError> {
     log::debug!("aria2:pause gid={gid}");
-    crate::services::tasks::bittorrent::pause(&app, &state.0, Some(&gid), false).await
+    state.0.pause(&gid).await
 }
 
 /// Resume a paused task.
 #[tauri::command]
 pub async fn aria2_unpause(
-    app: AppHandle,
     state: State<'_, TaskServiceState>,
     gid: String,
 ) -> Result<String, AppError> {
     log::debug!("aria2:resume gid={gid}");
-    crate::services::tasks::bittorrent::resume(&app, &state.0, &gid).await
+    state.0.resume_task(&gid).await
 }
 
 /// Save the current aria2 session to disk.
@@ -935,10 +575,7 @@ pub async fn aria2_purge_task_records(
 
 /// Forcefully pause every active engine task through the native RPC.
 #[tauri::command]
-pub async fn aria2_force_pause_all(
-    app: AppHandle,
-    state: State<'_, TaskServiceState>,
-) -> Result<String, AppError> {
+pub async fn aria2_force_pause_all(state: State<'_, TaskServiceState>) -> Result<String, AppError> {
     const SETTLE_ATTEMPTS: usize = 100;
     const SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(50);
 
@@ -951,7 +588,7 @@ pub async fn aria2_force_pause_all(
         .collect::<HashSet<_>>();
 
     log::info!("aria2:pause-all count={}", targets.len());
-    let response = crate::services::tasks::bittorrent::pause(&app, &state.0, None, true).await?;
+    let response = state.0.force_pause_all().await?;
     for _ in 0..SETTLE_ATTEMPTS {
         let (active, waiting) =
             tokio::try_join!(state.0.tell_active(), state.0.tell_waiting(0, 1000))?;
@@ -969,13 +606,12 @@ pub async fn aria2_force_pause_all(
     ))
 }
 
-/// Resume paused tasks while keeping unresolved magnet selections paused.
+/// Resume paused tasks while keeping unresolved media selections paused.
 #[tauri::command]
 pub async fn aria2_resume_eligible(
-    app: AppHandle,
     state: State<'_, TaskServiceState>,
 ) -> Result<crate::services::tasks::ResumeEligibleResult, AppError> {
-    let result = crate::services::tasks::bittorrent::resume_all(&app, &state.0).await?;
+    let result = state.0.resume_eligible().await?;
     log::info!(
         "aria2:resume-eligible resumed={} blocked={}",
         result.resumed,
@@ -986,8 +622,8 @@ pub async fn aria2_resume_eligible(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_p2p_sharing_task, is_terminal_download_status};
-    use crate::aria2::types::{Aria2BtInfo, Aria2Ed2kInfo, Aria2Task};
+    use super::is_terminal_download_status;
+    use crate::aria2::types::Aria2Task;
 
     #[tokio::test]
     async fn deletion_removes_the_visible_native_task_before_its_history() {
@@ -1013,7 +649,7 @@ mod tests {
                             ..Default::default()
                         }]
                     };
-                    let stat = json!({"downloadSpeed":"0","uploadSpeed":"0","numActive":"0",
+                    let stat = json!({"downloadSpeed":"0","numActive":"0",
                         "numWaiting":"0","numStopped":"0","numStoppedTotal":"0"});
                     json!([[stat], [tasks], [[]], [[]]])
                 }
@@ -1070,31 +706,6 @@ mod tests {
         assert!(!is_terminal_download_status("active"));
         assert!(!is_terminal_download_status("waiting"));
         assert!(!is_terminal_download_status("paused"));
-    }
-
-    #[test]
-    fn finish_sharing_accepts_bt_and_ed2k_seeders() {
-        let bt = Aria2Task {
-            status: "active".to_string(),
-            seeder: Some("true".to_string()),
-            bittorrent: Some(Aria2BtInfo::default()),
-            ..Aria2Task::default()
-        };
-        let ed2k = Aria2Task {
-            status: "paused".to_string(),
-            seeder: Some("true".to_string()),
-            ed2k: Some(Aria2Ed2kInfo::default()),
-            ..Aria2Task::default()
-        };
-        assert!(is_p2p_sharing_task(&bt));
-        assert!(is_p2p_sharing_task(&ed2k));
-        assert!(!is_p2p_sharing_task(&Aria2Task::default()));
-        assert!(!is_p2p_sharing_task(&Aria2Task {
-            status: "complete".to_string(),
-            seeder: Some("true".to_string()),
-            bittorrent: Some(Aria2BtInfo::default()),
-            ..Aria2Task::default()
-        }));
     }
 }
 

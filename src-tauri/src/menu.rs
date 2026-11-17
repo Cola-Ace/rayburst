@@ -39,17 +39,13 @@ pub fn build_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         "file-menu",
         "File",
         true,
-        &[
-            &MenuItem::with_id(app, "new-task", "New Task", true, Some("CmdOrCtrl+N"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(
-                app,
-                "open-torrent",
-                "Open Torrent File...",
-                true,
-                Some("CmdOrCtrl+O"),
-            )?,
-        ],
+        &[&MenuItem::with_id(
+            app,
+            "new-task",
+            "New Task",
+            true,
+            Some("CmdOrCtrl+N"),
+        )?],
     )?;
 
     // ── Edit menu ────────────────────────────────────────────────────

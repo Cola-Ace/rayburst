@@ -1,9 +1,7 @@
+//! Read-only browser Native Messaging diagnostics.
 use std::fs;
 use std::io;
-#[cfg(not(windows))]
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use rayburst_browser_launcher::{
     chromium_manifest_json, firefox_manifest_json, HOST_NAME, LAUNCHER_FILE_STEM,
@@ -43,58 +41,6 @@ impl ManifestDestination {
             &self.path,
             content.map_err(io::Error::other),
         )
-    }
-
-    fn repair(&self, launcher: &Path) -> Result<bool, RegistrationError> {
-        let content = self.content(launcher)?;
-        #[cfg(not(windows))]
-        {
-            write_if_changed(&self.path, &content)
-        }
-        #[cfg(windows)]
-        {
-            let actual = read_optional(&self.path)?;
-            if actual
-                .as_deref()
-                .map(parse_manifest)
-                .transpose()
-                .map_err(|error| RegistrationError::new("parse_manifest", &self.path, error))?
-                != Some(
-                    parse_manifest(&content).map_err(|error| {
-                        RegistrationError::new("parse_manifest", &self.path, error)
-                    })?,
-                )
-            {
-                return Err(RegistrationError::new(
-                    "validate_manifest",
-                    &self.path,
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "Bundled manifest does not match the compiled contract",
-                    ),
-                ));
-            }
-            let expected = path_to_string(&self.path)?;
-            if self.registry_value()?.as_deref() == Some(expected.as_str()) {
-                return Ok(false);
-            }
-            use winreg::{
-                enums::{HKEY_CURRENT_USER, KEY_WOW64_64KEY, KEY_WRITE},
-                RegKey,
-            };
-            let (key, _) = operation(
-                "create_registry_key",
-                Path::new(&self.registry_key),
-                RegKey::predef(HKEY_CURRENT_USER)
-                    .create_subkey_with_flags(&self.registry_key, KEY_WRITE | KEY_WOW64_64KEY),
-            )?;
-            operation(
-                "write_registry_value",
-                Path::new(&self.registry_key),
-                key.set_value("", &expected),
-            )?;
-            Ok(true)
-        }
     }
 
     #[cfg(windows)]
@@ -228,157 +174,9 @@ struct Failure {
     message: String,
 }
 
-impl Failure {
-    fn log(&self, browser: &str) {
-        log::warn!(
-            target: "native_messaging",
-            event = "registration_failed", browser, stage = self.stage,
-            path = self.path.as_str(), error_kind = self.error_kind.as_str(),
-            os_code = self.os_code, error = self.message.as_str();
-            "registration_failed"
-        );
-    }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum RegistrationStatus {
-    Unchanged,
-    Repaired,
-    Failed,
-}
-
-#[derive(Debug, Serialize)]
-struct BrowserResult {
-    browser: &'static str,
-    status: RegistrationStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<Failure>,
-}
-
-#[derive(Debug, Serialize)]
-struct RegistrationReport {
-    checked_at: String,
-    targets: Vec<BrowserResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    shared_error: Option<Failure>,
-}
-
-#[derive(Default)]
-struct RegistrationState(OnceLock<RegistrationReport>);
-
 struct Installation {
-    bundled: PathBuf,
     launcher: PathBuf,
     targets: Vec<ManifestDestination>,
-}
-
-pub fn schedule_repair(app: &AppHandle) {
-    // Development must never replace the installed application's browser host.
-    if tauri::is_dev() {
-        return;
-    }
-    app.manage(RegistrationState::default());
-    let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let report = match installation(&app).and_then(|installation| {
-            check_executable(&installation.bundled)?;
-            #[cfg(target_os = "linux")]
-            if installation.bundled != installation.launcher {
-                copy_executable_if_changed(&installation.bundled, &installation.launcher)?;
-                check_executable(&installation.launcher)?;
-                let application = PathBuf::from(app.env().appimage.ok_or_else(|| {
-                    RegistrationError::new(
-                        "resolve_appimage",
-                        &installation.launcher,
-                        io::Error::other("AppImage path is unavailable"),
-                    )
-                })?);
-                register_appimage_target(&installation.launcher, &application)?;
-            }
-            Ok(repair_targets(
-                &installation.targets,
-                &installation.launcher,
-            ))
-        }) {
-            Ok(report) => report,
-            Err(error) => {
-                let failure = error.details();
-                failure.log("shared");
-                RegistrationReport {
-                    checked_at: chrono::Utc::now().to_rfc3339(),
-                    targets: Vec::new(),
-                    shared_error: Some(failure),
-                }
-            }
-        };
-        let _ = app.state::<RegistrationState>().0.set(report);
-    });
-}
-
-#[cfg(target_os = "linux")]
-fn register_appimage_target(launcher: &Path, application: &Path) -> Result<(), RegistrationError> {
-    let target = launcher.with_file_name("rayburst");
-    let application = operation("resolve_appimage", application, application.canonicalize())?;
-    if fs::read_link(&target).ok().as_ref() == Some(&application) {
-        return Ok(());
-    }
-    let directory = operation(
-        "create_target_directory",
-        &target,
-        tempfile::tempdir_in(target.parent().expect("launcher directory")),
-    )?;
-    let link = directory.path().join("rayburst");
-    operation(
-        "link_appimage",
-        &link,
-        std::os::unix::fs::symlink(application, &link),
-    )?;
-    operation(
-        "replace_appimage_target",
-        &target,
-        fs::rename(link, &target),
-    )
-}
-
-fn repair_targets(targets: &[ManifestDestination], launcher: &Path) -> RegistrationReport {
-    let results: Vec<_> = targets
-        .iter()
-        .map(|target| {
-            let (status, error) = match target.repair(launcher) {
-                Ok(true) => (RegistrationStatus::Repaired, None),
-                Ok(false) => (RegistrationStatus::Unchanged, None),
-                Err(error) => {
-                    let failure = error.details();
-                    failure.log(target.browser);
-                    (RegistrationStatus::Failed, Some(failure))
-                }
-            };
-            BrowserResult {
-                browser: target.browser,
-                status,
-                error,
-            }
-        })
-        .collect();
-    let repaired = results
-        .iter()
-        .filter(|r| matches!(r.status, RegistrationStatus::Repaired))
-        .count();
-    let failed = results
-        .iter()
-        .filter(|r| matches!(r.status, RegistrationStatus::Failed))
-        .count();
-    log::info!(
-        target: "native_messaging", event = "registration_checked",
-        repaired, failed, unchanged = results.len() - repaired - failed;
-        "registration_checked"
-    );
-    RegistrationReport {
-        checked_at: chrono::Utc::now().to_rfc3339(),
-        targets: results,
-        shared_error: None,
-    }
 }
 
 /// Inspect only our own files. Export must never perform registration or activation.
@@ -391,12 +189,6 @@ pub async fn diagnostic_snapshot(app: &AppHandle) -> Value {
     }
     let app = app.clone();
     match tauri::async_runtime::spawn_blocking(move || {
-        let startup = app.try_state::<RegistrationState>().and_then(|state| {
-            state.0.get().map(|report| json!({
-                "status": if report.shared_error.is_some() { "not_attempted" } else { "completed" },
-                "report": report,
-            }))
-        }).unwrap_or_else(|| json!({ "status": "pending" }));
         let current = match installation(&app) {
             Ok(installation) => json!({
                 "launcher": inspect_executable(&installation.launcher),
@@ -404,7 +196,7 @@ pub async fn diagnostic_snapshot(app: &AppHandle) -> Value {
             }),
             Err(error) => json!({ "error": error.details() }),
         };
-        json!({ "host": HOST_NAME, "startup": startup, "current": current })
+        json!({ "host": HOST_NAME, "startup": { "status": "disabled" }, "current": current })
     }).await {
         Ok(value) => value,
         Err(error) => json!({ "error": { "stage": "inspect_registration", "message": redact(&error.to_string()) } }),
@@ -486,11 +278,7 @@ fn installation(app: &AppHandle) -> Result<Installation, RegistrationError> {
         })
         .collect()
     };
-    Ok(Installation {
-        bundled,
-        launcher,
-        targets,
-    })
+    Ok(Installation { launcher, targets })
 }
 
 fn check_executable(path: &Path) -> Result<fs::Metadata, RegistrationError> {
@@ -551,71 +339,6 @@ fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, RegistrationError> {
 fn parse_manifest(content: &[u8]) -> io::Result<Value> {
     serde_json::from_slice(content)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
-}
-
-#[cfg(not(windows))]
-fn write_if_changed(path: &Path, content: &[u8]) -> Result<bool, RegistrationError> {
-    if read_optional(path)?.as_deref() == Some(content) {
-        return Ok(false);
-    }
-    write_atomic(path, content, false)?;
-    Ok(true)
-}
-
-#[cfg(not(windows))]
-fn write_atomic(path: &Path, content: &[u8], executable: bool) -> Result<(), RegistrationError> {
-    let parent = path.parent().ok_or_else(|| {
-        RegistrationError::new(
-            "create_directory",
-            path,
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Destination has no parent directory",
-            ),
-        )
-    })?;
-    operation("create_directory", parent, fs::create_dir_all(parent))?;
-    let mut temporary = operation(
-        "create_temporary_file",
-        parent,
-        tempfile::NamedTempFile::new_in(parent),
-    )?;
-    operation("write_file", path, temporary.write_all(content))?;
-    if executable {
-        use std::os::unix::fs::PermissionsExt;
-        operation(
-            "set_permissions",
-            path,
-            temporary
-                .as_file()
-                .set_permissions(fs::Permissions::from_mode(0o755)),
-        )?;
-    }
-    operation("sync_file", path, temporary.as_file().sync_all())?;
-    operation(
-        "replace_file",
-        path,
-        temporary.persist(path).map_err(|error| error.error),
-    )?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn copy_executable_if_changed(source: &Path, destination: &Path) -> Result<(), RegistrationError> {
-    use std::os::unix::fs::PermissionsExt;
-    let content = operation("read_launcher", source, fs::read(source))?;
-    if read_optional(destination)?.as_deref() == Some(content.as_slice()) {
-        let metadata = operation("inspect_launcher", destination, fs::metadata(destination))?;
-        if metadata.permissions().mode() & 0o111 == 0 {
-            operation(
-                "set_permissions",
-                destination,
-                fs::set_permissions(destination, fs::Permissions::from_mode(0o755)),
-            )?;
-        }
-        return Ok(());
-    }
-    write_atomic(destination, &content, true)
 }
 
 #[cfg(windows)]
@@ -692,22 +415,6 @@ mod tests {
 
     use super::*;
 
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn appimage_target_tracks_relocation_without_using_a_mount_path() {
-        let root = tempfile::tempdir().expect("isolated registration");
-        let launcher = root.path().join(LAUNCHER_FILE_STEM);
-        let original = root.path().join("Rayburst original.AppImage");
-        let moved = root.path().join("Rayburst moved.AppImage");
-        fs::write(&original, b"fixture").expect("original image");
-        register_appimage_target(&launcher, &original).expect("register target");
-        let target = root.path().join("rayburst");
-        assert_eq!(fs::read_link(&target).expect("symlink"), original);
-        fs::rename(&original, &moved).expect("move image");
-        register_appimage_target(&launcher, &moved).expect("refresh target");
-        assert_eq!(target.canonicalize().expect("resolved target"), moved);
-    }
-
     #[cfg(not(windows))]
     #[test]
     fn macos_uses_only_formal_browser_locations() {
@@ -744,45 +451,6 @@ mod tests {
         assert!(paths.iter().any(|path| path.contains(".mozilla")));
     }
 
-    #[cfg(not(windows))]
-    #[test]
-    fn manifest_repair_is_idempotent() {
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let manifest = directory.path().join("nested").join("manifest.json");
-        let content = br#"{"name":"dev.aninsomniacy.rayburst.browser"}"#;
-
-        assert!(write_if_changed(&manifest, content).expect("initial manifest write"));
-        assert!(!write_if_changed(&manifest, content).expect("idempotent manifest check"));
-        assert_eq!(fs::read(manifest).expect("saved manifest"), content);
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn appimage_launcher_copy_is_stable_and_executable() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let directory = tempfile::tempdir().expect("temporary directory");
-        let source = directory.path().join("bundled-launcher");
-        let destination = directory.path().join("stable").join("launcher");
-        fs::write(&source, b"launcher-v1").expect("source launcher");
-
-        copy_executable_if_changed(&source, &destination).expect("initial launcher copy");
-        copy_executable_if_changed(&source, &destination).expect("idempotent launcher copy");
-
-        assert_eq!(
-            fs::read(&destination).expect("stable launcher"),
-            b"launcher-v1"
-        );
-        assert_ne!(
-            fs::metadata(destination)
-                .expect("launcher metadata")
-                .permissions()
-                .mode()
-                & 0o111,
-            0
-        );
-    }
-
     #[test]
     fn windows_resource_manifests_match_the_shared_contract() {
         let relative_launcher = Path::new(r"..\..\rayburst-browser-launcher.exe");
@@ -806,48 +474,6 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn failed_browser_does_not_block_other_registrations_or_later_repair() {
-        let root = tempfile::tempdir().expect("isolated home");
-        let targets = manifest_destinations("macos", root.path(), root.path());
-        let launcher = root.path().join("launcher");
-        let blocked = targets[0]
-            .path
-            .parent()
-            .expect("hosts")
-            .parent()
-            .expect("browser");
-        fs::create_dir_all(blocked.parent().expect("vendor")).expect("vendor directory");
-        fs::write(blocked, b"not a directory").expect("block only Chrome");
-        let report = repair_targets(&targets, &launcher);
-        assert!(matches!(
-            report.targets[0].status,
-            RegistrationStatus::Failed
-        ));
-        let failure = report.targets[0].error.as_ref().expect("contextual error");
-        assert_eq!(failure.stage, "read_file");
-        assert!(failure.os_code.is_some());
-        assert!(failure.path.ends_with(
-            "Google/Chrome/NativeMessagingHosts/dev.aninsomniacy.rayburst.browser.json"
-        ));
-        for target in &report.targets[1..] {
-            assert!(matches!(target.status, RegistrationStatus::Repaired));
-        }
-        for target in &targets[1..] {
-            assert_eq!(target.inspect(&launcher)["status"], "valid");
-        }
-        fs::remove_file(blocked).expect("remove isolated blocker");
-        let report = repair_targets(&targets, &launcher);
-        assert!(matches!(
-            report.targets[0].status,
-            RegistrationStatus::Repaired
-        ));
-        assert!(report.targets[1..]
-            .iter()
-            .all(|r| matches!(r.status, RegistrationStatus::Unchanged)));
-    }
-
-    #[cfg(not(windows))]
-    #[test]
     fn inspection_is_read_only_and_reports_missing_invalid_and_stale_manifests() {
         let root = tempfile::tempdir().expect("isolated home");
         let targets = manifest_destinations("linux", root.path(), root.path());
@@ -855,7 +481,12 @@ mod tests {
         let launcher = root.path().join("launcher");
         assert_eq!(target.inspect(&launcher)["status"], "missing");
         assert!(!target.path.parent().expect("parent").exists());
-        target.repair(&launcher).expect("register");
+        fs::create_dir_all(target.path.parent().expect("parent")).expect("fixture directory");
+        fs::write(
+            &target.path,
+            target.content(&launcher).expect("manifest content"),
+        )
+        .expect("fixture manifest");
         let before = fs::read(&target.path).expect("manifest");
         assert_eq!(
             target.inspect(&root.path().join("moved-launcher"))["status"],
@@ -870,8 +501,6 @@ mod tests {
             fs::read(&target.path).expect("not repaired by export"),
             b"{"
         );
-        target.repair(&launcher).expect("explicit repair");
-        assert_eq!(target.inspect(&launcher)["status"], "valid");
     }
 
     #[test]

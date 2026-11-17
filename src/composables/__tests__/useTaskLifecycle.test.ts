@@ -1,15 +1,13 @@
 /** @fileoverview Tests for persisted task reconstruction and cleanup. */
 import { describe, it, expect, vi } from 'vitest'
 import type { Aria2Task, HistoryRecord } from '@shared/types'
-import { getRestartDescriptors } from '@shared/utils'
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
   exists: vi.fn().mockResolvedValue(true),
   remove: vi.fn().mockResolvedValue(undefined),
 }))
 
-const { isMetadataTask, historyRecordToTask, mergeHistoryIntoTasks, extractHistoryFilePaths } =
-  await import('../useTaskLifecycle')
+const { historyRecordToTask, mergeHistoryIntoTasks, extractHistoryFilePaths } = await import('../useTaskLifecycle')
 
 // ── Test data factories ──────────────────────────────────────────────
 
@@ -19,9 +17,9 @@ function makeTask(overrides: Partial<Aria2Task> = {}): Aria2Task {
     status: 'complete',
     totalLength: '1048576',
     completedLength: '1048576',
-    uploadLength: '0',
+
     downloadSpeed: '0',
-    uploadSpeed: '0',
+
     connections: '0',
     dir: '/downloads',
     files: [
@@ -38,26 +36,6 @@ function makeTask(overrides: Partial<Aria2Task> = {}): Aria2Task {
 }
 
 // ── isMetadataTask ───────────────────────────────────────────────────
-
-describe('isMetadataTask', () => {
-  it('recognizes native aria2 metadata tasks', () => {
-    const task = makeTask({
-      bittorrent: { state: 'downloadingMetadata' },
-    })
-
-    expect(isMetadataTask(task)).toBe(true)
-  })
-
-  it('returns false for resolved native aria2 content tasks', () => {
-    const task = makeTask({
-      bittorrent: {
-        info: { name: 'KNOPPIX_V9.1CD-2021-01-25-EN' },
-      },
-    })
-
-    expect(isMetadataTask(task)).toBe(false)
-  })
-})
 
 // ── historyRecordToTask ─────────────────────────────────────────────
 
@@ -111,12 +89,6 @@ describe('historyRecordToTask', () => {
     expect(task.files[0].uris).toEqual([{ uri: 'https://example.com/test-file.zip', status: 'used' }])
   })
 
-  it('constructs bittorrent.info.name for BT tasks', () => {
-    const task = historyRecordToTask(makeRecord({ task_type: 'bt', name: 'My Torrent' }))
-    expect(task.bittorrent?.info?.name).toBe('My Torrent')
-    expect(task.files[0].path).toBe('/downloads/My Torrent')
-  })
-
   it('handles missing optional fields gracefully', () => {
     const task = historyRecordToTask(makeRecord({ uri: undefined, dir: undefined, total_length: undefined }))
     expect(task.dir).toBe('')
@@ -137,47 +109,12 @@ describe('historyRecordToTask', () => {
     expect(errored.completedLength).toBe('0')
   })
 
-  it('restores infoHash from meta JSON for BT restart', () => {
-    const meta = JSON.stringify({ infoHash: 'deadbeef1234567890abcdef' })
-    const task = historyRecordToTask(makeRecord({ task_type: 'bt', name: 'My Torrent', meta }))
-    expect(task.infoHash).toBe('deadbeef1234567890abcdef')
-    expect(task.bittorrent?.info?.name).toBe('My Torrent')
-  })
-
-  it('restores engine-provided magnetLink from meta JSON for BT restart descriptors', () => {
-    const meta = JSON.stringify({
-      infoHash: 'deadbeef1234567890abcdef',
-      announceList: [['udp://tracker1.example:80/announce'], ['https://tracker2.example/announce']],
-      magnetLink: 'magnet:?xt=urn:btih:deadbeef1234567890abcdef&dn=My%20Torrent',
-    })
-    const task = historyRecordToTask(makeRecord({ task_type: 'bt', name: 'My Torrent', meta }))
-
-    expect(task.bittorrent?.announceList).toEqual([
-      ['udp://tracker1.example:80/announce'],
-      ['https://tracker2.example/announce'],
-    ])
-    expect(task.bittorrent?.magnetLink).toBe('magnet:?xt=urn:btih:deadbeef1234567890abcdef&dn=My%20Torrent')
-    expect(getRestartDescriptors(task)).toEqual([
-      { uris: ['magnet:?xt=urn:btih:deadbeef1234567890abcdef&dn=My%20Torrent'] },
-    ])
-  })
-
-  it('restores engine-provided ed2kLink from meta JSON for ED2K restart descriptors', () => {
-    const ed2kLink = 'ed2k://|file|movie.mkv|42|31313131313131313131313131313131|/'
-    const task = historyRecordToTask(
-      makeRecord({ task_type: 'ed2k', name: 'movie.mkv', uri: undefined, meta: JSON.stringify({ ed2kLink }) }),
-    )
-
-    expect(task.ed2k?.ed2kLink).toBe(ed2kLink)
-    expect(getRestartDescriptors(task)).toEqual([{ uris: [ed2kLink], path: task.files[0]?.path }])
-  })
-
   it('handles missing/corrupt meta gracefully', () => {
     const task1 = historyRecordToTask(makeRecord({ meta: undefined }))
-    expect(task1.infoHash).toBeUndefined()
+    expect(task1.files).toHaveLength(1)
 
     const task2 = historyRecordToTask(makeRecord({ meta: 'NOT_JSON' }))
-    expect(task2.infoHash).toBeUndefined()
+    expect(task2.files).toHaveLength(1)
   })
 })
 
@@ -225,30 +162,6 @@ describe('mergeHistoryIntoTasks', () => {
     expect(mergeHistoryIntoTasks([], history)[0]).toBe(first)
     expect(Object.isFrozen(first)).toBe(true)
     expect(mergeHistoryIntoTasks([], [{ ...history[0] }])[0]).not.toBe(first)
-  })
-
-  // ── infoHash-based cross-session dedup ─────────────────────────
-
-  it('preserves distinct GIDs with the same infoHash', () => {
-    // aria2 restarted → same torrent got new GID Y, but infoHash is stable
-    const aria2 = [
-      makeTask({
-        gid: 'new-gid-Y',
-        status: 'active',
-        infoHash: 'aabbccdd11223344',
-        bittorrent: { info: { name: 'Ubuntu' } },
-      } as Partial<Aria2Task>),
-    ]
-    const history = [
-      makeRecord({
-        gid: 'old-gid-X',
-        status: 'complete',
-        meta: JSON.stringify({ infoHash: 'aabbccdd11223344' }),
-      }),
-    ]
-    const result = mergeHistoryIntoTasks(aria2, history)
-    expect(result).toHaveLength(2)
-    expect(result[0].gid).toBe('new-gid-Y')
   })
 
   it('keeps HTTP records with no infoHash (GID-only dedup)', () => {

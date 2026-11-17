@@ -39,15 +39,11 @@ describe('hydrateAppConfig', () => {
 
   it('preserves user-owned arrays including intentionally empty arrays', () => {
     const result = hydrateAppConfig({
-      trackerSource: [],
-      customTrackerUrls: ['https://example.com/trackers.txt'],
       historyDirectories: [],
       favoriteDirectories: ['/downloads'],
       fileCategories: [],
     })
 
-    expect(result.config.trackerSource).toEqual([])
-    expect(result.config.customTrackerUrls).toEqual(['https://example.com/trackers.txt'])
     expect(result.config.historyDirectories).toEqual([])
     expect(result.config.favoriteDirectories).toEqual(['/downloads'])
     expect(result.config.fileCategories).toEqual([])
@@ -137,28 +133,6 @@ describe('hydrateAppConfig', () => {
     )
   })
 
-  it('repairs invalid external BitTorrent endpoint values', () => {
-    const result = hydrateAppConfig({
-      btExternalIp: 'tracker.example.com',
-      btExternalPort: 70000,
-    })
-
-    expect(result.config.btExternalIp).toBe(DEFAULT_APP_CONFIG.btExternalIp)
-    expect(result.config.btExternalPort).toBe(DEFAULT_APP_CONFIG.btExternalPort)
-    expect(result.repairs).toEqual(expect.arrayContaining(['btExternalIp', 'btExternalPort']))
-  })
-
-  it('repairs invalid BitTorrent identity values', () => {
-    const result = hydrateAppConfig({
-      btUserAgent: 'invalid\nidentity',
-      btPeerIdPrefix: '超过二十字节的节点标识前缀',
-    })
-
-    expect(result.config.btUserAgent).toBe(DEFAULT_APP_CONFIG.btUserAgent)
-    expect(result.config.btPeerIdPrefix).toBe(DEFAULT_APP_CONFIG.btPeerIdPrefix)
-    expect(result.repairs).toEqual(expect.arrayContaining(['btUserAgent', 'btPeerIdPrefix']))
-  })
-
   it('preserves stream connection values accepted by the engine', () => {
     const valid = hydrateAppConfig({
       streamMaxConnections: 128,
@@ -211,22 +185,12 @@ describe('hydrateAppConfig', () => {
     expect(result.repairs).toContain('proxy.mode')
   })
 
-  it('rejects removed BitTorrent encryption values', () => {
-    const result = hydrateAppConfig({
-      btEncryption: 'enabled' as never,
-    })
-
-    expect(result.config.btEncryption).toBe('preferred')
-    expect(result.repairs).toContain('btEncryption')
-  })
-
   it('discards unknown preference keys', () => {
     const result = hydrateAppConfig({
       autoSyncTracker: true,
     } as Partial<AppConfig> & { autoSyncTracker: boolean })
 
     expect(result.config).not.toHaveProperty('autoSyncTracker')
-    expect(result.config.btTrackerAutoSync).toBe(DEFAULT_APP_CONFIG.btTrackerAutoSync)
   })
 
   it('generates missing secrets and preserves intentionally cleared secrets', () => {
@@ -252,7 +216,7 @@ describe('hydrateAppConfig', () => {
     expect(UPDATE_CHANNELS).toContain(DEFAULT_APP_CONFIG.updateChannel)
     expect(APP_LOG_LEVELS).toContain(DEFAULT_APP_CONFIG.logLevel)
     expect(ARIA2_LOG_LEVELS).toContain(DEFAULT_APP_CONFIG.aria2LogLevel)
-    expect(['download-all', 'prompt', 'manual']).toContain(DEFAULT_APP_CONFIG.magnetFileSelectionPolicy)
+    expect(['direct', 'manual', 'system']).toContain(DEFAULT_APP_CONFIG.proxy.mode)
     expect(FILE_ALLOCATION_OPTIONS).toContain(DEFAULT_APP_CONFIG.fileAllocation)
     expect(DEFAULT_APP_CONFIG.proxy.scope).toEqual(PROXY_SCOPE_OPTIONS)
   })

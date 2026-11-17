@@ -3,19 +3,6 @@ import { invoke } from '@tauri-apps/api/core'
 import { computed, ref, watch, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { bytesToSize } from '@shared/utils'
-import type { BatchItem } from '@shared/types'
-
-/** Bytes the batch will write, as far as they are known before the download. */
-export function knownBatchSize(items: BatchItem[]): number {
-  return items.reduce((total, item) => {
-    if (item.kind === 'uri') return total + (item.browserContext?.size ?? 0)
-    const selected = item.selectedFileIndices && new Set(item.selectedFileIndices)
-    return (item.torrentMeta?.files ?? []).reduce(
-      (sum, file) => (!selected || selected.has(Number(file.index)) ? sum + Number(file.length) : sum),
-      total,
-    )
-  }, 0)
-}
 
 export function useFreeSpace(folder: Ref<string>, size: Ref<number>) {
   const { t } = useI18n()

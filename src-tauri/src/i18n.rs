@@ -106,30 +106,6 @@ pub fn download_complete(locale: &str, task_name: &str) -> NativeMessage {
     }
 }
 
-pub fn bt_complete(locale: &str, task_name: &str) -> NativeMessage {
-    NativeMessage {
-        title: rust_i18n::t!("notification.bt-complete-title", locale = locale).into_owned(),
-        body: rust_i18n::t!(
-            "notification.bt-complete-body",
-            locale = locale,
-            task_name = task_name
-        )
-        .into_owned(),
-    }
-}
-
-pub fn ed2k_complete(locale: &str, task_name: &str) -> NativeMessage {
-    NativeMessage {
-        title: rust_i18n::t!("notification.ed2k-complete-title", locale = locale).into_owned(),
-        body: rust_i18n::t!(
-            "notification.ed2k-complete-body",
-            locale = locale,
-            task_name = task_name
-        )
-        .into_owned(),
-    }
-}
-
 pub fn download_failed(locale: &str, task_name: &str, reason: Option<&str>) -> NativeMessage {
     let reason = reason
         .filter(|message| !message.trim().is_empty())
@@ -171,18 +147,5 @@ mod tests {
             assert!(!notification.title.is_empty());
             assert!(notification.body.contains("file.zip"));
         }
-    }
-
-    #[test]
-    fn formats_native_message_arguments() {
-        assert_eq!(
-            download_start("en-US", "file.zip", 2).body,
-            "Downloading: file.zip and 2 other task(s)"
-        );
-        assert_eq!(
-            download_failed("en-US", "file.zip", Some("Network error")).body,
-            "file.zip: Network error"
-        );
-        assert_eq!(ed2k_complete("zh-CN", "file.zip").body, "共享中：file.zip");
     }
 }

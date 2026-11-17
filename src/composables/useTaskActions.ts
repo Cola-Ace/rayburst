@@ -8,15 +8,7 @@
 import { finishMedia, saveSession } from '@/api/aria2'
 import { canFinishMedia } from '@shared/utils/media'
 import { ref, h } from 'vue'
-import {
-  getTaskUri,
-  getTaskName,
-  resolveOpenTarget,
-  canRestart,
-  writeAppClipboardText,
-  getSharingResultLabelKey,
-  getTaskSharingKind,
-} from '@shared/utils'
+import { getTaskUri, getTaskName, resolveOpenTarget, canRestart, writeAppClipboardText } from '@shared/utils'
 import { getErrorMessage } from '@shared/utils/errorMessage'
 import { invoke } from '@tauri-apps/api/core'
 import { resolveTaskFilePath, requestFileRecheck } from '@/composables/useTaskPaths'
@@ -28,7 +20,6 @@ interface TaskActionsDeps {
   taskStore: {
     pauseTask: (task: Aria2Task) => Promise<unknown>
     resumeTask: (task: Aria2Task) => Promise<unknown>
-    finishSharing: (task: Aria2Task) => Promise<unknown>
     removeTask: (task: Aria2Task, options?: TaskDeletionOptions) => Promise<unknown>
     removeTaskRecord: (task: Aria2Task) => Promise<unknown>
     retryTask: (task: Aria2Task) => Promise<unknown>
@@ -37,7 +28,6 @@ interface TaskActionsDeps {
     fetchList: () => Promise<unknown>
     taskList: Aria2Task[]
   }
-  requestMagnetSelection: (gid: string) => void
   preferenceConfig: () => AppConfig
   t: (key: string, params?: Record<string, unknown>) => string
   dialog: ReturnType<typeof useDialog>
@@ -50,7 +40,7 @@ interface TaskActionsDeps {
 }
 
 export function useTaskActions(deps: TaskActionsDeps) {
-  const { taskStore, preferenceConfig, t, dialog, message, requestMagnetSelection } = deps
+  const { taskStore, preferenceConfig, t, dialog, message } = deps
 
   const deleteFilesLabel = () =>
     t(
@@ -127,19 +117,6 @@ export function useTaskActions(deps: TaskActionsDeps) {
     } finally {
       finishingMedia.delete(task.gid)
     }
-  }
-
-  function handleFinishSharing(task: Aria2Task) {
-    const taskName = getTaskName(task, { defaultName: 'Unknown' })
-    const kind = getTaskSharingKind(task)
-    if (!kind) return
-    taskStore
-      .finishSharing(task)
-      .then(() => message.success(t(getSharingResultLabelKey(kind, 'success'), { taskName })))
-      .catch((error) => {
-        logger.warn('TaskView.finishSharing', getErrorMessage(error))
-        message.error(t(getSharingResultLabelKey(kind, 'fail'), { taskName }))
-      })
   }
 
   function handleDeleteTask(task: Aria2Task) {
@@ -266,16 +243,11 @@ export function useTaskActions(deps: TaskActionsDeps) {
     }
   }
 
-  function handleSelectFiles(task: Aria2Task) {
-    requestMagnetSelection(task.gid)
-  }
-
   return {
     handlePauseTask,
     handleResumeTask,
     handleRetryTask,
     handleRedownloadTask,
-    handleFinishSharing,
     handleFinishMedia,
     handleDeleteTask,
     handleDeleteRecord,
@@ -283,6 +255,5 @@ export function useTaskActions(deps: TaskActionsDeps) {
     handleShowInfo,
     handleShowInFolder,
     handleOpenFile,
-    handleSelectFiles,
   }
 }

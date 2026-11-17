@@ -13,14 +13,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 const TICK: Duration = Duration::from_millis(800);
 const MAX_CHARS: usize = 100_000;
 const MAX_LINES: usize = 200;
-const ALL_TAGS: [&str; 6] = [
-    "http://",
-    "https://",
-    "sftp://",
-    "magnet:",
-    "ed2k://",
-    "thunder://",
-];
+const ALL_TAGS: [&str; 4] = ["http://", "https://", "sftp://", "thunder://"];
 const WEB_PAGE_EXTENSIONS: [&str; 13] = [
     "html", "htm", "xhtml", "shtml", "php", "asp", "aspx", "jsp", "jspx", "cfm", "cgi", "do",
     "action",
@@ -112,22 +105,10 @@ fn is_file_url(url: &str) -> bool {
     })
 }
 
-fn info_hash(line: &str) -> bool {
-    match line.len() {
-        40 | 64 => line.chars().all(|ch| ch.is_ascii_hexdigit()),
-        32 => line
-            .chars()
-            .all(|ch| ch.is_ascii_uppercase() || ('2'..='7').contains(&ch)),
-        _ => false,
-    }
-}
-
 fn allowed_tags(config: &ClipboardConfig) -> Vec<&'static str> {
     [
         (config.http, &["http://", "https://"][..]),
         (config.sftp, &["sftp://"]),
-        (config.magnet, &["magnet:"]),
-        (config.ed2k, &["ed2k://"]),
         (config.thunder, &["thunder://"]),
     ]
     .into_iter()
@@ -136,7 +117,7 @@ fn allowed_tags(config: &ClipboardConfig) -> Vec<&'static str> {
     .collect()
 }
 
-fn resource(line: &str, tags: &[&str], hash: bool, files_only: bool) -> bool {
+fn resource(line: &str, tags: &[&str], files_only: bool) -> bool {
     let lower = line.to_ascii_lowercase();
     if files_only
         && (lower.starts_with("http://") || lower.starts_with("https://"))
@@ -146,7 +127,6 @@ fn resource(line: &str, tags: &[&str], hash: bool, files_only: bool) -> bool {
     }
     tags.iter()
         .any(|tag| lower.starts_with(tag) && line.len() > tag.len())
-        || (hash && info_hash(line))
 }
 
 /// Whether the text is only links, as `detectResource` decides: one link or
@@ -164,12 +144,7 @@ pub(crate) fn detect(text: &str, config: &ClipboardConfig) -> bool {
         return false;
     }
     if let [line] = lines[..] {
-        return resource(
-            line,
-            &allowed_tags(config),
-            config.bt_hash,
-            config.http_files_only,
-        );
+        return resource(line, &allowed_tags(config), config.http_files_only);
     }
     let mut entry = false;
     for raw in text.lines() {
@@ -194,7 +169,7 @@ pub(crate) fn detect(text: &str, config: &ClipboardConfig) -> bool {
             .collect();
         if uris.is_empty()
             || !uris.iter().all(|uri| {
-                resource(uri, &ALL_TAGS, true, false)
+                resource(uri, &ALL_TAGS, false)
                     && (!config.http_files_only
                         || !uri.to_ascii_lowercase().starts_with("http")
                         || is_file_url(uri))
@@ -217,30 +192,18 @@ mod tests {
             ..ClipboardConfig::default()
         }
     }
-
     #[test]
-    fn detects_links_like_the_add_window() {
-        let config = config();
-        assert!(detect("https://example.com/a.zip", &config));
-        assert!(!detect("https://example.com/page.html", &config));
-        assert!(!detect("https://example.com/", &config));
-        assert!(detect("magnet:?xt=urn:btih:abc", &config));
-        assert!(detect(&"a".repeat(40), &config));
-        assert!(!detect("see https://example.com/a.zip", &config));
-        assert!(detect(
-            "https://example.com/a.zip\n  out=dir/a.zip\nhttps://example.com/b.zip\thttps://mirror.example/b.zip\n",
-            &config
+    fn copied_links_obey_the_remaining_protocol_filters() {
+        let mut settings = config();
+        assert!(detect("https://example.test/file.zip", &settings));
+        assert!(detect("sftp://example.test/file.zip", &settings));
+        assert!(!detect("magnet:?xt=urn:btih:abc", &settings));
+        assert!(!detect("ed2k://|file|a.zip|1|abc|/", &settings));
+        assert!(!detect(
+            "0123456789abcdef0123456789abcdef01234567",
+            &settings
         ));
-        assert!(!detect("https://example.com/a.zip\nhello", &config));
-        let off = ClipboardConfig {
-            http: false,
-            ..config.clone()
-        };
-        assert!(!detect("https://example.com/a.zip", &off));
-        let pages = ClipboardConfig {
-            http_files_only: false,
-            ..config
-        };
-        assert!(detect("https://example.com/", &pages));
+        settings.http = false;
+        assert!(!detect("https://example.test/file.zip", &settings));
     }
 }

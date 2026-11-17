@@ -9,21 +9,16 @@ const { invokeMock, renderToastMock } = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
 vi.mock('../useNotificationToast', () => ({ renderCompletionToast: renderToastMock }))
 
-import {
-  handleTaskComplete,
-  handleP2pDownloadComplete,
-  handleTaskError,
-  handleTaskStart,
-} from '../useTaskNotifyHandlers'
+import { handleTaskComplete, handleTaskError, handleTaskStart } from '../useTaskNotifyHandlers'
 
 const task: Aria2Task = {
   gid: 'task-1',
   status: 'complete',
   totalLength: '100',
   completedLength: '100',
-  uploadLength: '0',
+
   downloadSpeed: '0',
-  uploadSpeed: '0',
+
   connections: '0',
   dir: '/downloads',
   files: [
@@ -51,21 +46,6 @@ describe('Task notifications', () => {
     options.onShowInFolder()
     expect(deps.onOpenFile).toHaveBeenCalledWith(task)
     expect(deps.onShowInFolder).toHaveBeenCalledWith(task)
-    expect(invokeMock).not.toHaveBeenCalled()
-  })
-
-  it('excludes metadata-only tasks from completion notifications', () => {
-    handleTaskComplete({ ...task, bittorrent: { state: 'downloadingMetadata' } }, deps)
-    expect(deps.messageSuccess).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    ['bt', 'task.bt-download-complete-message'],
-    ['ed2k', 'task.ed2k-download-complete-message'],
-  ] as const)('uses the %s completion message', (kind, key) => {
-    handleP2pDownloadComplete(task, kind, deps)
-    expect(deps.t).toHaveBeenCalledWith(key, { taskName: 'file.zip' })
-    expect(deps.messageSuccess).toHaveBeenCalledOnce()
     expect(invokeMock).not.toHaveBeenCalled()
   })
 

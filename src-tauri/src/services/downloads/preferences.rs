@@ -18,19 +18,13 @@ pub(crate) struct Preferences {
     last_save_location: String,
     pub(crate) file_category_enabled: bool,
     pub(crate) file_categories: Vec<Category>,
-    pub(crate) magnet_file_selection_policy: crate::database::MagnetSelectionPolicy,
     user_agent: String,
     user_agent_profiles: Vec<Profile>,
     user_agent_rules: Vec<Rule>,
     site_rules: Vec<SiteRule>,
     proxy: ProxySettings,
-    #[serde(default = "enabled")]
-    pub(super) bittorrent_enabled: bool,
 }
 
-fn enabled() -> bool {
-    true
-}
 #[derive(Default, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub(super) enum ExtensionDownloadBehavior {
@@ -277,9 +271,7 @@ pub(super) fn options(prefs: &Preferences, request: &AddRequest) -> Result<Value
             ));
         }
         options["dir"] = prefs.last_save_location.clone().into();
-    } else if prefs.file_category_enabled
-        && !url::Url::parse(&request.url).is_ok_and(|url| url.scheme() == "magnet")
-    {
+    } else if prefs.file_category_enabled {
         let name = request.filename.clone().unwrap_or_else(|| {
             url::Url::parse(urls[0])
                 .ok()
@@ -444,39 +436,6 @@ mod tests {
         );
         assert_eq!(direct["all-proxy"], "");
         assert_eq!(apply("https://other.org/a", json!({})), json!({}));
-    }
-
-    #[test]
-    fn the_system_proxy_leaves_downloads_that_choose_their_own() {
-        let prefs = |proxy: Value| -> Preferences {
-            serde_json::from_value(json!({ "proxy": proxy })).unwrap()
-        };
-        let apply = |prefs: &Preferences, uri: &str, options: Value| {
-            let mut options = options;
-            apply_system_proxy(prefs, &[uri.to_owned()], &mut options);
-            options
-        };
-        let system = prefs(json!({"mode":"system","scope":["download"]}));
-        let direct = json!({"all-proxy":""});
-        assert_eq!(
-            apply(&system, "https://a.example/f", direct.clone()),
-            direct
-        );
-        assert_eq!(
-            apply(&system, "magnet:?xt=urn:btih:abc", json!({})),
-            json!({})
-        );
-        for other in [
-            json!({"mode":"manual","server":"http://p:1","scope":["download"]}),
-            json!({"mode":"system","scope":["update-app"]}),
-        ] {
-            assert_eq!(
-                apply(&prefs(other), "https://a.example/f", json!({})),
-                json!({})
-            );
-        }
-        assert!(proxy_on(&system));
-        assert!(!proxy_on(&prefs(json!({}))));
     }
 
     #[test]

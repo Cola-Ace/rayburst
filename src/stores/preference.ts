@@ -6,8 +6,7 @@ import { load } from '@tauri-apps/plugin-store'
 import { invoke } from '@tauri-apps/api/core'
 import { getLangDirection, pushItemToFixedLengthArray, removeArrayItem } from '@shared/utils'
 import { activeLocale } from '@shared/utils/i18n'
-import { fetchBtTrackerFromSource } from '@shared/utils/tracker'
-import { DEFAULT_APP_CONFIG, MAX_NUM_OF_DIRECTORIES } from '@shared/constants'
+import { MAX_NUM_OF_DIRECTORIES } from '@shared/constants'
 import { logger } from '@shared/logger'
 import { createDefaultAppConfig, hydrateAppConfig } from '@shared/utils/configHydration'
 import { recordRecentUserAgentProfileId } from '@shared/utils/userAgentPolicy'
@@ -231,11 +230,6 @@ export const usePreferenceStore = defineStore('preference', () => {
     }
   }
 
-  async function fetchBtTracker(trackerSource: string[] = []) {
-    const proxy = config.value.proxy || DEFAULT_APP_CONFIG.proxy
-    return fetchBtTrackerFromSource(trackerSource, proxy)
-  }
-
   return {
     engineMode,
     pendingChanges,
@@ -258,7 +252,6 @@ export const usePreferenceStore = defineStore('preference', () => {
     recordRecentUserAgentProfile,
     updateAppTheme,
     updateAppLocale,
-    fetchBtTracker,
     resetToDefaults,
   }
 })

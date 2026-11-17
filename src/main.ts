@@ -3,6 +3,7 @@
  * The add-task and floating windows load the same entry and mount only their
  * own content.
  */
+import { ENGINE_RPC_PORT } from '@shared/constants'
 import { createApp, h } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
@@ -17,14 +18,10 @@ import { useHistoryStore } from './stores/history'
 import { useDatabaseStore } from './stores/database'
 import { useEngineStore } from './stores/engine'
 import aria2Api from './api/aria2'
-import { DEFAULT_TRACKER_SOURCE, ENGINE_RPC_PORT, PROXY_SCOPES } from '@shared/constants'
-import { convertTrackerDataToLine, convertTrackerDataToComma } from '@shared/utils/tracker'
 import { logger } from '@shared/logger'
 import { getErrorMessage } from '@shared/utils/errorMessage'
 import { resolveUserVisibleDownloadDir, shouldPersistResolvedDownloadDir } from '@shared/utils/userVisibleDirectory'
 import { getUpdateProxy } from '@/composables/useUpdateFlow'
-import { resolveAppProxyUrl } from '@shared/utils/proxy'
-import { checkSyncDue } from '@shared/utils/syncSchedule'
 import type { AppConfig, TauriUpdate } from '@shared/types'
 import App from './App.vue'
 import AppProviders from './AppProviders.vue'
@@ -178,82 +175,6 @@ if (isFloatWindow) {
     }
   }
 
-  async function syncBtTrackersIfDue(startup: boolean) {
-    const config = preferenceStore.config
-    if (
-      !checkSyncDue({
-        enabled: !!config.btTrackerAutoSync,
-        intervalHours: Number(config.btTrackerSyncIntervalHours),
-        lastSyncTime: Number(config.lastSyncTrackerTime),
-        now: Date.now(),
-        startup,
-      })
-    ) {
-      return
-    }
-
-    const sources = config.trackerSource?.length ? config.trackerSource : DEFAULT_TRACKER_SOURCE
-    try {
-      const result = await preferenceStore.fetchBtTracker(sources)
-      const text = convertTrackerDataToLine(result.data)
-      if (!text) return
-
-      const comma = convertTrackerDataToComma(result.data)
-      await preferenceStore.updateAndSave({
-        btTracker: comma,
-        lastSyncTrackerTime: Date.now(),
-      })
-
-      const { invoke } = await import('@tauri-apps/api/core')
-      const { buildSystemConfigFromAppConfig } = await import('@shared/utils/systemConfig')
-      await invoke('replace_system_config', {
-        config: buildSystemConfigFromAppConfig(preferenceStore.config, preferenceStore.config.dir),
-      })
-      if (engineStore.isReady) {
-        await aria2Api.changeGlobalOption({ 'bt-tracker': comma } as Partial<AppConfig>)
-      }
-      logger.info('Tracker', `Auto-synced: ${result.data.length}/${sources.length} source(s) succeeded`)
-    } catch (e) {
-      logger.debug('Tracker', 'auto-sync failed: ' + (e as Error).message)
-    }
-  }
-
-  async function syncEd2kBootstrapIfDue(startup: boolean) {
-    const config = preferenceStore.config
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const status = await invoke<{ serverMetModified: number | null; nodesDatModified: number | null }>(
-        'get_ed2k_bootstrap_status',
-      )
-      const lastSync = Math.max(status.serverMetModified ?? 0, status.nodesDatModified ?? 0)
-      if (
-        !checkSyncDue({
-          enabled: !!config.ed2kBootstrapAutoSync,
-          intervalHours: Number(config.ed2kBootstrapSyncIntervalHours),
-          lastSyncTime: lastSync,
-          now: Date.now(),
-          startup,
-        })
-      ) {
-        return
-      }
-
-      await invoke('sync_ed2k_bootstrap_files', {
-        serverMetUrl: config.ed2kServerMetUrl,
-        nodesDatUrl: config.ed2kNodesDatUrl,
-        proxy: resolveAppProxyUrl(config.proxy, PROXY_SCOPES.UPDATE_TRACKERS) ?? undefined,
-      })
-      logger.info('ED2K', 'Bootstrap files auto-synced')
-    } catch (e) {
-      logger.debug('ED2K.bootstrapAutoSync', e)
-    }
-  }
-
-  function syncNetworkSourcesIfDue(startup: boolean) {
-    void syncBtTrackersIfDue(startup)
-    void syncEd2kBootstrapIfDue(startup)
-  }
-
   // ---------------------------------------------------------------------------
   // Startup orchestration
   //
@@ -263,7 +184,7 @@ if (isFloatWindow) {
   //  Phase 1 (critical path)   – loadPreference → locale → window.show()
   //  Phase 2 (engine, async)   – rpcSecret → save config → EngineSupervisor
   //  Phase 3 (non-critical)    – autostart, protocol sync (parallel)
-  //  Phase 4 (deferred)        – update check, tracker sync, FS warmup,
+  //  Phase 4 (deferred)        – update check, FS warmup,
   //                              clipboard monitor
   // ---------------------------------------------------------------------------
 
@@ -326,20 +247,6 @@ if (isFloatWindow) {
     }
   }
 
-  /**
-   * Brings the login registration in line with the preference: a missing or
-   * outdated one (moved install, unquoted path) is rewritten, while the
-   * system's own on/off switch for it is left as the user set it.
-   */
-  async function syncAutostart(config: typeof preferenceStore.config): Promise<void> {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      await invoke('sync_autostart', { enabled: !!config.openAtLogin })
-    } catch (e) {
-      logger.warn('main.autostart', e)
-    }
-  }
-
   async function bootstrapMainWindow(): Promise<void> {
     // ── Phase 1: critical path → window visible ASAP ──────────────────────
     await preferenceStore.loadPreference()
@@ -382,15 +289,6 @@ if (isFloatWindow) {
     // Engine initialization stays asynchronous while the supervisor publishes state.
     const enginePromise = initEngine(port, secret, config)
 
-    // ── Phase 3: non-critical IPC ────────────────────────────────────────
-    //
-    // External input routing is owned by Rust and consumed from
-    // `take_pending_deep_links` after MainLayout registers listeners. Do not
-    // call tauri-plugin-deep-link `getCurrent()` here: that value is
-    // process-level plugin state, so lightweight-mode WebView recreation would
-    // replay stale torrent/protocol inputs.
-    Promise.allSettled([syncAutostart(config)])
-
     // ── Phase 2 completion: engine ready ───────────────────────────────────
     try {
       const ok = await enginePromise
@@ -413,7 +311,6 @@ if (isFloatWindow) {
 
     // ── Phase 4: deferred non-critical tasks ───────────────────────────────
     autoCheckForUpdate()
-    syncNetworkSourcesIfDue(true)
 
     // Initialize download history database, then schedule lightweight cleanup.
     historyStore
@@ -443,8 +340,6 @@ if (isFloatWindow) {
         setInterval(runCleanup, 1_800_000)
       })
       .catch((e) => logger.warn('HistoryDB', 'init failed: ' + e))
-
-    setInterval(() => syncNetworkSourcesIfDue(false), 3_600_000)
 
     // Warm up Tauri FS plugin IPC channel to eliminate cold-start delay on first
     // file operation (e.g. task deletion).

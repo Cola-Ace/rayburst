@@ -30,7 +30,7 @@ describe('proxyPolicy', () => {
     expect(getDefaultTaskProxyMode(proxy)).toBe('system')
     expect(getDownloadProxy(proxy)).toBe('system')
     expect(resolveAppProxyUrl(proxy, PROXY_SCOPES.UPDATE_APP)).toBe('system')
-    expect(resolveAppProxyUrl(proxy, PROXY_SCOPES.UPDATE_TRACKERS)).toBeNull()
+    expect(resolveAppProxyUrl(proxy, PROXY_SCOPES.DOWNLOAD)).toBe('system')
   })
 
   it('emits scoped HTTP download options', () => {
@@ -43,22 +43,8 @@ describe('proxyPolicy', () => {
       }),
     ).toEqual({
       'all-proxy': 'http://127.0.0.1:7890',
-      'bt-proxy': '',
       'no-proxy': 'localhost',
     })
-  })
-
-  it('embeds credentials in the BitTorrent proxy URI', () => {
-    expect(
-      buildDownloadProxyOptions({
-        mode: 'manual',
-        server: 'socks5://127.0.0.1:1080',
-        username: 'user',
-        password: 'pass',
-        bypass: '',
-        scope: [PROXY_SCOPES.BITTORRENT],
-      })['bt-proxy'],
-    ).toBe('socks5://user:pass@127.0.0.1:1080')
   })
 
   it('clears standard aria2 proxy keys for direct task mode', () => {
@@ -106,9 +92,9 @@ describe('resolveAppProxyUrl', () => {
           server: 'Test123',
           username: 'Test123',
           password: 'Test1234',
-          scope: [PROXY_SCOPES.UPDATE_TRACKERS],
+          scope: [PROXY_SCOPES.DOWNLOAD],
         },
-        PROXY_SCOPES.UPDATE_TRACKERS,
+        PROXY_SCOPES.DOWNLOAD,
       ),
     ).toBeNull()
   })

@@ -61,7 +61,10 @@ async fn start_engine(max_concurrent: u32) -> Engine {
     std::fs::create_dir_all(&downloads).unwrap();
     let child = Command::new(binary())
         .args([
-            "--no-conf=true".to_string(),
+            format!(
+                "--conf-path={}/binaries/aria2.conf",
+                env!("CARGO_MANIFEST_DIR")
+            ),
             "--enable-rpc=true".to_string(),
             format!("--rpc-listen-port={port}"),
             format!("--rpc-secret={SECRET}"),
@@ -111,7 +114,7 @@ async fn remember_headers(
         user_agent: value("user-agent"),
         language: value("accept-language"),
     };
-    b"d4:infode"
+    b"download payload"
 }
 
 /// A body that trickles in over two minutes.
@@ -127,14 +130,11 @@ async fn serve() -> (SocketAddr, Arc<Mutex<Seen>>, tempfile::TempDir) {
     let files = tempfile::tempdir().expect("served dir");
     let large: Vec<u8> = (0..LARGE).map(|index| (index % 251) as u8).collect();
     std::fs::write(files.path().join("large.bin"), large).unwrap();
-    std::fs::write(
-        files.path().join("small.txt"),
-        b"udp://tracker.example:80/announce\n",
-    )
-    .unwrap();
+    std::fs::write(files.path().join("small.txt"), b"download payload\n").unwrap();
+    std::fs::write(files.path().join("metadata.torrent"), b"d4:infode").unwrap();
     let seen = Arc::new(Mutex::new(Seen::default()));
     let app = Router::new()
-        .route("/headers.torrent", get(remember_headers))
+        .route("/headers.bin", get(remember_headers))
         .route("/slow", get(slow))
         .with_state(Arc::clone(&seen))
         .fallback_service(tower_http::services::ServeDir::new(files.path()));
@@ -183,10 +183,7 @@ async fn small_files_come_back_whole_and_leave_nothing() {
     let engine = start_engine(5).await;
     let (address, _, _files) = serve().await;
     let request = FetchRequest::small(format!("http://{address}/small.txt"), None, 1024);
-    assert_eq!(
-        body(&engine, &request).await,
-        b"udp://tracker.example:80/announce\n"
-    );
+    assert_eq!(body(&engine, &request).await, b"download payload\n");
     assert_clean(&engine).await;
 }
 
@@ -195,10 +192,10 @@ async fn small_files_come_back_whole_and_leave_nothing() {
 async fn requests_carry_the_browser_context() {
     let engine = start_engine(5).await;
     let (address, seen, _files) = serve().await;
-    let mut request = FetchRequest::small(format!("http://{address}/headers.torrent"), None, 1024);
+    let mut request = FetchRequest::small(format!("http://{address}/headers.bin"), None, 1024);
     request.headers = vec!["Cookie: sid=1".into(), "Accept-Language: en-US".into()];
     request.user_agent = Some("Mozilla/5.0 e2e".into());
-    assert_eq!(body(&engine, &request).await, b"d4:infode");
+    assert_eq!(body(&engine, &request).await, b"download payload");
     let seen = seen.lock().unwrap();
     assert_eq!(seen.cookie.as_deref(), Some("sid=1"));
     assert_eq!(seen.user_agent.as_deref(), Some("Mozilla/5.0 e2e"));
@@ -284,4 +281,50 @@ async fn a_full_queue_hands_the_request_back() {
     assert!(matches!(outcome, Fetched::Unavailable(_)));
     assert!(engine.service.tasks.internal_ids().await.is_empty());
     let _ = engine.service.force_remove(&busy).await;
+}
+
+#[tokio::test]
+#[ignore = "starts the bundled engine"]
+async fn downloaded_metadata_stays_an_ordinary_file_after_option_updates() {
+    let engine = start_engine(5).await;
+    let (address, _, _files) = serve().await;
+    engine
+        .service
+        .change_global_option(
+            serde_json::json!({"follow-torrent": true})
+                .as_object()
+                .unwrap()
+                .clone(),
+        )
+        .await
+        .unwrap();
+    let gid = engine
+        .service
+        .add_uri(
+            vec![format!("http://{address}/metadata.torrent")],
+            serde_json::json!({"pause": true, "follow-torrent": true}),
+        )
+        .await
+        .unwrap();
+    engine
+        .service
+        .change_option(&gid, serde_json::json!({"follow-torrent": true}))
+        .await
+        .unwrap();
+    engine.service.resume_task(&gid).await.unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let task = engine.service.tell_status(&gid).await.unwrap();
+        if task.status == "complete" {
+            assert!(task.followed_by.as_ref().is_none_or(Vec::is_empty));
+            assert_eq!(task.files.len(), 1);
+            assert_eq!(std::fs::read(&task.files[0].path).unwrap(), b"d4:infode");
+            let tasks = engine.service.tell_task_snapshot(true).await.unwrap();
+            assert_eq!(tasks.len(), 1);
+            break;
+        }
+        assert_ne!(task.status, "error", "{:?}", task.error_message);
+        assert!(Instant::now() < deadline, "download did not complete");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }

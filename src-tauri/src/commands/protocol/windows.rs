@@ -1,10 +1,7 @@
 //! Effective Windows Shell protocol associations.
 use crate::error::AppError;
 use std::os::windows::ffi::OsStringExt;
-use windows_sys::Win32::UI::Shell::{
-    AssocQueryStringW, SHChangeNotify, ASSOCF_IS_PROTOCOL, ASSOCSTR_EXECUTABLE, SHCNE_ASSOCCHANGED,
-    SHCNF_IDLIST,
-};
+use windows_sys::Win32::UI::Shell::{AssocQueryStringW, ASSOCF_IS_PROTOCOL, ASSOCSTR_EXECUTABLE};
 
 pub struct Handler {
     pub path: Option<std::path::PathBuf>,
@@ -77,50 +74,6 @@ pub fn is_default(protocol: &str) -> Result<bool, AppError> {
             .to_string_lossy()
             .eq_ignore_ascii_case(&dunce::simplified(&expected).to_string_lossy())
     }))
-}
-
-/// Open the installed application's page without creating another registration.
-pub fn settings_url(app: &tauri::AppHandle) -> Result<String, AppError> {
-    use winreg::{
-        enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
-        RegKey,
-    };
-    let identity = &app.config().identifier;
-    let expected = format!(
-        "\"{}\" \"%1\"",
-        dunce::simplified(&std::env::current_exe()?).display()
-    );
-    for (hive, parameter) in [
-        (HKEY_LOCAL_MACHINE, "registeredAppMachine"),
-        (HKEY_CURRENT_USER, "registeredAppUser"),
-    ] {
-        let root = RegKey::predef(hive);
-        let command = root
-            .open_subkey(format!(
-                "Software\\Classes\\{identity}.rayburst\\shell\\open\\command"
-            ))
-            .and_then(|key| key.get_value::<String, _>(""));
-        if command.is_ok_and(|value| value.eq_ignore_ascii_case(&expected)) {
-            return Ok(format!(
-                "ms-settings:defaultapps?{parameter}={}",
-                urlencoding::encode(identity)
-            ));
-        }
-    }
-    Ok("ms-settings:defaultapps".into())
-}
-
-/// Notify the Shell after a completed registration, rather than refreshing icons alone.
-pub fn notify_changed() {
-    // SAFETY: SHCNE_ASSOCCHANGED takes no item pointers.
-    unsafe {
-        SHChangeNotify(
-            SHCNE_ASSOCCHANGED as i32,
-            SHCNF_IDLIST,
-            std::ptr::null(),
-            std::ptr::null(),
-        );
-    }
 }
 
 #[cfg(test)]

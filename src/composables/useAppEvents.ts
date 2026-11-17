@@ -8,14 +8,12 @@
 import { useTaskSelectionStore } from '@/stores/taskSelection'
 import { listen } from '@tauri-apps/api/event'
 import { updateTaskFileStates, type TaskFileState } from '@/composables/useTaskFileMissing'
-import { listenForTorrentDrops } from '@/composables/useTorrentDrop'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { useRouter, useRoute } from 'vue-router'
 import { logger } from '@shared/logger'
 import { isEngineReady } from '@/api/aria2'
-import { detectKind, createBatchItem } from '@shared/utils/batchHelpers'
+import { createBatchItem } from '@shared/utils/batchHelpers'
 import { createExternalInputTraceId, summarizeExternalInputBatch } from '@shared/utils/externalInputDiagnostics'
 import { getErrorMessage } from '@shared/utils/errorMessage'
 import type { ExternalDownloadInput } from '@shared/types'
@@ -75,8 +73,6 @@ interface AppEventsDeps {
       rpcSecret: string
       extensionApiPort?: number
       listenPort?: number
-      ed2kListenPort?: number
-      ed2kUdpListenPort?: number
       lightweightMode?: boolean
     }
     updatePreference?: (cfg: Record<string, unknown>) => void
@@ -94,7 +90,6 @@ interface AppEventsDeps {
 
 interface AppEventsReturn {
   setupListeners: () => Promise<{
-    unlistenDragDrop: (() => void) | null
     unlistenMenuEvent: (() => void) | null
     unlistenTrayMenu: (() => void) | null
     unlistenDeepLink: (() => void) | null
@@ -263,20 +258,6 @@ export function useAppEvents(deps: AppEventsDeps): AppEventsReturn {
       case 'new-task':
         appStore.showAddTaskDialog()
         break
-      case 'open-torrent': {
-        const selected = await openDialog({
-          multiple: true,
-          filters: [{ name: 'Torrent', extensions: ['torrent'] }],
-        })
-        if (typeof selected === 'string') {
-          const skipped = appStore.enqueueBatch([createBatchItem(detectKind(selected), selected)])
-          if (skipped > 0) message.warning(t('task.duplicate-task'))
-        } else if (Array.isArray(selected) && selected.length > 0) {
-          const skipped = appStore.enqueueBatch(selected.map((p) => createBatchItem(detectKind(p), p)))
-          if (skipped > 0) message.warning(t('task.duplicate-task'))
-        }
-        break
-      }
       case 'preferences':
         router.push('/preference').catch(() => {
           /* duplicate navigation */
@@ -374,13 +355,6 @@ export function useAppEvents(deps: AppEventsDeps): AppEventsReturn {
         await handleExitConfirm()
         break
     }
-  }
-
-  // ─── Drag & drop .torrent files ──────────────────────────────────
-  async function setupDragDropListener() {
-    return registerCleanup(
-      await listenForTorrentDrops({ enqueue: (items) => appStore.enqueueBatch(items), warn: message.warning, t }),
-    )
   }
 
   // ─── Deep-link and single-instance listeners ─────────────────────
@@ -576,13 +550,7 @@ export function useAppEvents(deps: AppEventsDeps): AppEventsReturn {
         const argv = event.payload
         const urls = argv.filter((a) => {
           const lower = a.toLowerCase()
-          return (
-            !a.startsWith('-') &&
-            (lower.includes('://') ||
-              lower.startsWith('magnet:') ||
-              lower.startsWith('ed2k://') ||
-              lower.endsWith('.torrent'))
-          )
+          return !a.startsWith('-') && (lower.includes('://') || lower.startsWith('thunder://'))
         })
         if (urls.length > 0) {
           logger.info('SingleInstance', `forwarding ${urls.length} URL(s) from second instance`)
@@ -603,7 +571,6 @@ export function useAppEvents(deps: AppEventsDeps): AppEventsReturn {
     setupNavGuard()
 
     const { unlistenDeepLink, unlistenExternalInput, unlistenSingleInstance } = await setupExternalInputListeners()
-    const unlistenDragDrop = await setupDragDropListener()
     const unlistenMenuEvent = await setupMenuListener()
     const unlistenTrayMenu = await setupTrayListener()
 
@@ -648,7 +615,6 @@ export function useAppEvents(deps: AppEventsDeps): AppEventsReturn {
     }
 
     return {
-      unlistenDragDrop,
       unlistenMenuEvent,
       unlistenTrayMenu,
       unlistenDeepLink,

@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Aria2Task } from '@shared/types'
-import {
-  buildPeerDetailRows,
-  buildSourceDetailRows,
-  peerRowsSignature,
-  sourceRowsSignature,
-} from '../useTaskDetailRows'
+import { buildSourceDetailRows, sourceRowsSignature } from '../useTaskDetailRows'
 
 function makeTask(uri: string): Aria2Task {
   return {
@@ -13,9 +8,9 @@ function makeTask(uri: string): Aria2Task {
     status: 'active',
     totalLength: '100',
     completedLength: '0',
-    uploadLength: '0',
+
     downloadSpeed: '0',
-    uploadSpeed: '0',
+
     connections: '0',
     dir: '/downloads',
     files: [
@@ -47,64 +42,5 @@ describe('buildSourceDetailRows', () => {
     expect(sourceRowsSignature(makeTask('https://a.example/file.bin'))).toBe(
       sourceRowsSignature(makeTask('https://b.example/file.bin')),
     )
-  })
-})
-
-describe('buildPeerDetailRows', () => {
-  it('sorts peers by host and exposes IP separately for GeoIP lookup', () => {
-    const rows = buildPeerDetailRows([
-      {
-        peerId: '-TR3000-abcdefghijkl',
-        ip: '203.0.113.2',
-        port: '6881',
-        bitfield: 'ff',
-        amChoking: 'true',
-        peerChoking: 'false',
-        downloadSpeed: '0',
-        uploadSpeed: '10',
-        seeder: 'true',
-        state: 'connected',
-        transport: 'tcp',
-        encryption: 'rc4',
-        sources: ['tracker'],
-        progress: '1.000000',
-        flags: 'U',
-        incoming: 'false',
-        downloaded: '0',
-        uploaded: '10',
-        completedLength: '100',
-      },
-      {
-        peerId: '-qB5000-abcdefghijkl',
-        ip: '198.51.100.1',
-        port: '6881',
-        bitfield: '',
-        amChoking: 'false',
-        peerChoking: 'true',
-        downloadSpeed: '20',
-        uploadSpeed: '0',
-        seeder: 'false',
-        state: 'connected',
-        transport: 'utp',
-        encryption: 'plain',
-        sources: ['dht'],
-        progress: '0.500000',
-        flags: 'D',
-        incoming: 'false',
-        downloaded: '20',
-        uploaded: '0',
-        completedLength: '50',
-      },
-    ])
-
-    expect(rows.map((row) => row.host)).toEqual(['198.51.100.1:6881', '203.0.113.2:6881'])
-    expect(rows.map((row) => row.ip)).toEqual(['198.51.100.1', '203.0.113.2'])
-  })
-
-  it('signs peers by endpoint only for active-tab GeoIP gating', () => {
-    const a = [{ ip: '198.51.100.1', port: '6881' }]
-    const b = [{ ip: '198.51.100.1', port: '6881' }]
-
-    expect(peerRowsSignature(a as never)).toBe(peerRowsSignature(b as never))
   })
 })

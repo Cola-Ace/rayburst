@@ -3,7 +3,7 @@
  * @fileoverview Content of the standalone add-task window.
  *
  * The desktop builds this window ahead of time, hidden, and hands it every new
- * download: browser handoffs, links, torrent files and manual entry from the
+ * download: browser handoffs, links and manual entry from the
  * main window. It shows itself once there is something to confirm, and puts
  * itself away after the user submits or cancels, or after handing
  * auto-submitted downloads to the engine.
@@ -23,14 +23,12 @@ import { emit, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import AddTask from '@/components/task/AddTask.vue'
 import WindowControls from '@/components/layout/WindowControls.vue'
-import TorrentDropOverlay from '@/components/task/TorrentDropOverlay.vue'
 import { useAppStore } from '@/stores/app'
 import { usePreferenceStore } from '@/stores/preference'
 import { useWindowScale } from '@/composables/useWindowScale'
 import { useAppMessage } from '@/composables/useAppMessage'
 import { useEscapeKey } from '@/composables/useEscapeKey'
 import { usePlatform } from '@/composables/usePlatform'
-import { listenForTorrentDrops } from '@/composables/useTorrentDrop'
 import { afterReveal, nextFrame, reducedMotion } from '@/composables/useWindowReveal'
 import { logger } from '@shared/logger'
 import { getErrorMessage } from '@shared/utils/errorMessage'
@@ -230,7 +228,7 @@ async function leave() {
     await invoke('add_window_leave').catch((error: unknown) => logger.warn('AddWindow.leave', error))
 }
 
-/** Waits for the form to read what it opens with, such as a torrent's files, but not for long. */
+/** Waits for the form to read what it opens with, including browser context, but not for long. */
 async function prepared() {
   let timer: ReturnType<typeof setTimeout> | undefined
   await Promise.race([
@@ -447,7 +445,6 @@ onMounted(async () => {
   })
   unlisteners.push(
     await view.listen<AddWindowInputs>('add-window:inputs', ({ payload }) => void receive(payload)),
-    await listenForTorrentDrops({ enqueue: (items) => appStore.enqueueBatch(items), warn: message.warning, t }),
     await view.onCloseRequested((event) => {
       event.preventDefault()
       void addTask.value?.dismiss()
@@ -484,7 +481,6 @@ onBeforeUnmount(() => {
         @close="close"
         @submitted="emit('add-window:submitted').catch(() => undefined)"
       />
-      <TorrentDropOverlay />
     </div>
   </div>
 </template>

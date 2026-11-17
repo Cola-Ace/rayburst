@@ -31,16 +31,6 @@ vi.mock('@/composables/useAddTaskSubmit', async (importOriginal) => {
   return {
     ...actual,
     submitManualUris: (...args: Parameters<typeof actual.submitManualUris>) => submitManualUrisMock(...args),
-    submitBatchItems: (...args: Parameters<typeof actual.submitBatchItems>) => submitBatchItemsMock(...args),
-  }
-})
-
-vi.mock('@/composables/useAddTaskFileOps', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/composables/useAddTaskFileOps')>()
-  return {
-    ...actual,
-    resolveUnresolvedItems: (...args: Parameters<typeof actual.resolveUnresolvedItems>) =>
-      resolveUnresolvedItemsMock(...args),
   }
 })
 
@@ -51,7 +41,7 @@ describe('useAppStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     submitManualUrisMock.mockReset()
-    submitManualUrisMock.mockResolvedValue({ submittedTaskNames: [], magnetGids: [], magnetFailures: [] })
+    submitManualUrisMock.mockResolvedValue({ submittedTaskNames: [] })
     submitBatchItemsMock.mockReset()
     submitBatchItemsMock.mockResolvedValue(0)
     resolveUnresolvedItemsMock.mockClear()
@@ -62,28 +52,31 @@ describe('useAppStore', () => {
   it('enqueueBatch deduplicates against items already in pendingBatch', () => {
     const store = useAppStore()
 
-    store.pendingBatch = [createBatchItem('uri', 'magnet:?xt=urn:btih:existing')]
+    store.pendingBatch = [createBatchItem('uri', 'https://example.test/existing')]
 
     const skipped = store.enqueueBatch([
-      createBatchItem('uri', 'magnet:?xt=urn:btih:existing'),
-      createBatchItem('uri', 'magnet:?xt=urn:btih:new'),
+      createBatchItem('uri', 'https://example.test/existing'),
+      createBatchItem('uri', 'https://example.test/new'),
     ])
 
     expect(skipped).toBe(1)
-    expect(store.pendingBatch.map((i) => i.source)).toEqual(['magnet:?xt=urn:btih:existing', 'magnet:?xt=urn:btih:new'])
+    expect(store.pendingBatch.map((i) => i.source)).toEqual([
+      'https://example.test/existing',
+      'https://example.test/new',
+    ])
   })
 
   it('enqueueBatch deduplicates duplicates within the same incoming batch', () => {
     const store = useAppStore()
 
     const skipped = store.enqueueBatch([
-      createBatchItem('uri', 'magnet:?xt=urn:btih:dup'),
-      createBatchItem('uri', 'magnet:?xt=urn:btih:dup'),
-      createBatchItem('uri', 'magnet:?xt=urn:btih:other'),
+      createBatchItem('uri', 'https://example.test/dup'),
+      createBatchItem('uri', 'https://example.test/dup'),
+      createBatchItem('uri', 'https://example.test/other'),
     ])
 
     expect(skipped).toBe(1)
-    expect(store.pendingBatch.map((i) => i.source)).toEqual(['magnet:?xt=urn:btih:dup', 'magnet:?xt=urn:btih:other'])
+    expect(store.pendingBatch.map((i) => i.source)).toEqual(['https://example.test/dup', 'https://example.test/other'])
   })
 
   it('enqueueBatch returns 0 and opens dialog when given empty array', () => {
@@ -152,14 +145,13 @@ describe('useAppStore', () => {
       const store = useAppStore()
       store.applyStat({
         downloadSpeed: 204800,
-        uploadSpeed: 10240,
+
         numActive: 2,
         numWaiting: 1,
         numStopped: 5,
         numStoppedTotal: 10,
       })
       expect(store.stat.downloadSpeed).toBe(204800)
-      expect(store.stat.uploadSpeed).toBe(10240)
       expect(store.stat.numActive).toBe(2)
       expect(store.stat.numWaiting).toBe(1)
       expect(store.stat.numStopped).toBe(5)
@@ -169,21 +161,20 @@ describe('useAppStore', () => {
       const store = useAppStore()
       store.applyStat({
         downloadSpeed: 999,
-        uploadSpeed: 100,
+
         numActive: 0,
         numWaiting: 0,
         numStopped: 1,
         numStoppedTotal: 1,
       })
       expect(store.stat.downloadSpeed).toBe(999)
-      expect(store.stat.uploadSpeed).toBe(100)
     })
 
     it('preserves downloadSpeed when tasks are active', () => {
       const store = useAppStore()
       store.applyStat({
         downloadSpeed: 512000,
-        uploadSpeed: 0,
+
         numActive: 1,
         numWaiting: 0,
         numStopped: 0,
@@ -201,61 +192,10 @@ describe('useAppStore', () => {
       usePreferenceStore().config.extensionDownloadBehavior = 'confirm'
     })
 
-    it('treats remote .torrent URLs as torrent tasks', () => {
-      const store = useAppStore()
-      store.handleDeepLinkUrls(['https://example.com/linux.torrent'])
-      expect(store.pendingBatch.map((i) => ({ kind: i.kind, source: i.source }))).toEqual([
-        { kind: 'torrent', source: 'https://example.com/linux.torrent' },
-      ])
-    })
-
-    it('keeps local file:// torrent references as file items', () => {
-      const store = useAppStore()
-      store.handleDeepLinkUrls(['file:///Users/test/Downloads/a.torrent'])
-      expect(store.pendingBatch.map((i) => ({ kind: i.kind, source: i.source }))).toEqual([
-        { kind: 'torrent', source: '/Users/test/Downloads/a.torrent' },
-      ])
-    })
-
-    it('normalizes Windows file URIs without leaving a leading slash before the drive letter', () => {
-      const store = useAppStore()
-      store.handleDeepLinkUrls(['file:///C:/Users/test/Downloads/Space%20Name.torrent'])
-
-      expect(store.pendingBatch.map((i) => ({ kind: i.kind, source: i.source }))).toEqual([
-        { kind: 'torrent', source: 'C:/Users/test/Downloads/Space Name.torrent' },
-      ])
-    })
-
-    it('handles magnet links', () => {
-      const store = useAppStore()
-      store.handleDeepLinkUrls(['magnet:?xt=urn:btih:abc123'])
-      expect(store.pendingBatch[0].kind).toBe('uri')
-      expect(store.pendingBatch[0].source).toBe('magnet:?xt=urn:btih:abc123')
-    })
-
-    it('handles ED2K file links as URI tasks', () => {
-      const store = useAppStore()
-      const url = 'ed2k://|file|Ubuntu%2026.04.iso|123456789|0123456789abcdef0123456789abcdef|/'
-      store.handleDeepLinkUrls([url])
-      expect(store.pendingBatch[0].kind).toBe('uri')
-      expect(store.pendingBatch[0].source).toBe(url)
-      expect(store.pendingBatch[0].displayName).toBe(url)
-    })
-
     it('no-ops for empty or null-ish input', () => {
       const store = useAppStore()
       store.handleDeepLinkUrls([])
       expect(store.pendingBatch).toEqual([])
-    })
-
-    it('handles mixed protocol URLs', () => {
-      const store = useAppStore()
-      store.handleDeepLinkUrls([
-        'https://example.com/file.zip',
-        'magnet:?xt=urn:btih:hash',
-        'file:///local/path.torrent',
-      ])
-      expect(store.pendingBatch).toHaveLength(3)
     })
 
     it('treats the private scheme as activation only, even with download parameters', () => {
@@ -287,8 +227,6 @@ describe('useAppStore', () => {
       store.setExternalInputStartHandler(onStart)
       submitManualUrisMock.mockResolvedValueOnce({
         submittedTaskNames: ['file.zip'],
-        magnetGids: [],
-        magnetFailures: [],
       })
 
       await store.handleExternalInputs([browserInput('https://example.com/file.zip')])
@@ -298,32 +236,6 @@ describe('useAppStore', () => {
       expect(store.pendingBatch).toHaveLength(0)
       expect(store.addTaskVisible).toBe(false)
       expect(onStart).toHaveBeenCalledWith(['file.zip'])
-    })
-
-    it('auto-submits magnet URI when enabled', async () => {
-      const store = useAppStore()
-      const { usePreferenceStore } = await import('@/stores/preference')
-      const prefStore = usePreferenceStore()
-      prefStore.config.extensionDownloadBehavior = 'show'
-
-      await store.handleExternalInputs([browserInput('magnet:?xt=urn:btih:abc123')])
-
-      expect(store.pendingBatch).toHaveLength(0)
-      expect(store.addTaskVisible).toBe(false)
-    })
-
-    it('auto-submits ED2K URI when enabled', async () => {
-      const store = useAppStore()
-      const { usePreferenceStore } = await import('@/stores/preference')
-      const prefStore = usePreferenceStore()
-      prefStore.config.extensionDownloadBehavior = 'show'
-
-      await store.handleExternalInputs([
-        browserInput('ed2k://|file|Ubuntu%2026.04.iso|123456789|0123456789abcdef0123456789abcdef|/'),
-      ])
-
-      expect(store.pendingBatch).toHaveLength(0)
-      expect(store.addTaskVisible).toBe(false)
     })
 
     it('falls back to AddTask dialog when disabled', async () => {
@@ -336,68 +248,6 @@ describe('useAppStore', () => {
 
       expect(store.pendingBatch).toHaveLength(1)
       expect(store.addTaskVisible).toBe(true)
-    })
-
-    it('shows AddTask for remote .torrent URLs', async () => {
-      const store = useAppStore()
-      const { usePreferenceStore } = await import('@/stores/preference')
-      const prefStore = usePreferenceStore()
-      prefStore.config.extensionDownloadBehavior = 'show'
-
-      await store.handleExternalInputs([browserInput('https://example.com/linux.torrent')])
-
-      expect(store.pendingBatch).toHaveLength(1)
-      expect(store.pendingBatch[0].kind).toBe('torrent')
-      expect(store.addTaskVisible).toBe(true)
-      expect(submitManualUrisMock).not.toHaveBeenCalled()
-      expect(resolveUnresolvedItemsMock).not.toHaveBeenCalled()
-      expect(submitBatchItemsMock).not.toHaveBeenCalled()
-    })
-
-    it.each([
-      ['the user saves torrent files', { extensionTorrentAction: 'save' as const }],
-      ['BitTorrent is off', { bittorrentEnabled: false }],
-    ])('downloads a .torrent link as a plain file when %s', async (_, prefs) => {
-      const store = useAppStore()
-      const { usePreferenceStore } = await import('@/stores/preference')
-      const prefStore = usePreferenceStore()
-      prefStore.config.extensionDownloadBehavior = 'confirm'
-      Object.assign(prefStore.config, prefs)
-
-      await store.handleExternalInputs([browserInput('https://example.com/linux.torrent')])
-
-      expect(store.pendingBatch).toHaveLength(1)
-      expect(store.pendingBatch[0].kind).toBe('uri')
-    })
-
-    it('auto-submits magnet URLs without bypassing file selection', async () => {
-      const store = useAppStore()
-      const { usePreferenceStore } = await import('@/stores/preference')
-      const prefStore = usePreferenceStore()
-      prefStore.config.extensionDownloadBehavior = 'show'
-
-      await store.handleExternalInputs([browserInput('magnet:?xt=urn:btih:abc123')])
-      await new Promise((resolve) => setTimeout(resolve, 0))
-
-      expect(submitManualUrisMock).toHaveBeenCalledTimes(1)
-      expect(store.addTaskVisible).toBe(false)
-    })
-
-    it('handles mixed batch: auto-submits URIs, dialogs torrent', async () => {
-      const store = useAppStore()
-      const { usePreferenceStore } = await import('@/stores/preference')
-      const prefStore = usePreferenceStore()
-      prefStore.config.extensionDownloadBehavior = 'show'
-
-      await store.handleExternalInputs([
-        browserInput('https://example.com/file.zip'),
-        browserInput('https://example.com/linux.torrent'),
-      ])
-
-      expect(store.pendingBatch).toHaveLength(1)
-      expect(store.pendingBatch[0].kind).toBe('torrent')
-      expect(store.addTaskVisible).toBe(true)
-      expect(submitManualUrisMock).toHaveBeenCalledTimes(1)
     })
 
     it('does not open dialog when all items are auto-submitted', async () => {

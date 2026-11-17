@@ -28,7 +28,6 @@ pub struct RuntimeConfig {
     pub speed_schedule_to: String,
     pub speed_schedule_days: u8,
     pub max_overall_download_limit: String,
-    pub max_overall_upload_limit: String,
     pub tray_speedometer: bool,
     /// Whether the tray icon is shown.
     pub show_tray_icon: bool,
@@ -77,10 +76,7 @@ pub struct ClipboardConfig {
     pub background: bool,
     pub http: bool,
     pub sftp: bool,
-    pub magnet: bool,
-    pub ed2k: bool,
     pub thunder: bool,
-    pub bt_hash: bool,
     pub http_files_only: bool,
 }
 
@@ -91,10 +87,7 @@ impl Default for ClipboardConfig {
             background: false,
             http: true,
             sftp: true,
-            magnet: true,
-            ed2k: true,
             thunder: true,
-            bt_hash: true,
             http_files_only: true,
         }
     }
@@ -112,7 +105,6 @@ impl Default for RuntimeConfig {
             speed_schedule_to: "06:00".into(),
             speed_schedule_days: 0,
             max_overall_download_limit: String::new(),
-            max_overall_upload_limit: String::new(),
             tray_speedometer: false,
             show_tray_icon: true,
             #[cfg(target_os = "macos")]
@@ -180,7 +172,6 @@ mod tests {
             "speedScheduleTo": "08:00",
             "speedScheduleDays": 31,
             "maxOverallDownloadLimit": "1M",
-            "maxOverallUploadLimit": "512K",
             "taskNotification": false,
             "notifyOnComplete": false,
             "notifyOnStart": false,
@@ -206,7 +197,6 @@ mod tests {
         assert_eq!(cfg.speed_schedule_to, "08:00");
         assert_eq!(cfg.speed_schedule_days, 31);
         assert_eq!(cfg.max_overall_download_limit, "1M");
-        assert_eq!(cfg.max_overall_upload_limit, "512K");
         assert!(cfg.tray_speedometer);
         #[cfg(target_os = "macos")]
         assert!(!cfg.dock_badge_speed);

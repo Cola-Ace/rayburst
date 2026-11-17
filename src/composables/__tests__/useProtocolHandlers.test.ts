@@ -7,7 +7,6 @@ const snapshot = (state: AssociationStatus['state']): AssociationStatus => ({
   state,
   handler: null,
   error: null,
-  canChange: true,
 })
 
 describe('native associations', () => {
@@ -15,32 +14,36 @@ describe('native associations', () => {
     mockInvoke.mockReset()
   })
 
-  it('reports a protected default without claiming success', async () => {
-    mockInvoke.mockRejectedValueOnce({ Protocol: 'manual_change_required' }).mockResolvedValueOnce(snapshot('other'))
+  it('queries existing defaults without registering a handler', async () => {
+    mockInvoke.mockResolvedValue(snapshot('other'))
     const associations = useProtocolHandlers()
-    expect(await associations.setDefault('.torrent')).toEqual({ kind: 'manual' })
-    expect(associations.status.value['.torrent']?.state).toBe('other')
+    await associations.refreshAll()
+    expect(mockInvoke.mock.calls).toEqual([
+      ['get_association_status', { protocol: 'thunder' }],
+      ['get_association_status', { protocol: 'rayburst' }],
+    ])
+    expect(associations.status.value['thunder']?.state).toBe('other')
   })
 
-  it('serializes mutations until native verification completes', async () => {
-    let complete!: () => void
+  it('coalesces refreshes until the current queries complete', async () => {
+    let complete!: (value: AssociationStatus) => void
     mockInvoke
       .mockReturnValueOnce(
-        new Promise<void>((resolve) => {
+        new Promise<AssociationStatus>((resolve) => {
           complete = resolve
         }),
       )
       .mockResolvedValueOnce(snapshot('unassigned'))
       .mockResolvedValue(snapshot('current'))
     const associations = useProtocolHandlers()
-    const operation = associations.setDefault('magnet')
-    expect(await associations.setDefault('ed2k')).toEqual({ kind: 'ignored' })
+    const operation = associations.refreshAll()
     await associations.refreshAll()
-    expect(mockInvoke).toHaveBeenCalledTimes(1)
-    complete()
-    expect(await operation).toEqual({ kind: 'success' })
+    expect(mockInvoke).toHaveBeenCalledTimes(2)
+    complete(snapshot('other'))
+    await operation
+    expect(mockInvoke).toHaveBeenCalledTimes(4)
     expect(associations.busy.value).toBe(false)
-    expect(associations.status.value.magnet?.state).toBe('current')
-    expect(associations.status.value.ed2k?.state).toBe('current')
+    expect(associations.status.value.thunder?.state).toBe('current')
+    expect(associations.status.value.rayburst?.state).toBe('current')
   })
 })

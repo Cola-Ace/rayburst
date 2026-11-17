@@ -20,9 +20,9 @@ const makeTask = (status: TaskStatus, extra: Partial<Aria2Task> = {}): Aria2Task
   status,
   totalLength: '100',
   completedLength: status === 'complete' ? '100' : '50',
-  uploadLength: '0',
+
   downloadSpeed: '0',
-  uploadSpeed: '0',
+
   connections: '0',
   dir: '/downloads',
   files: [

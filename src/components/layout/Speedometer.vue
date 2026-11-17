@@ -21,14 +21,7 @@ import { usePreferenceStore } from '@/stores/preference'
 import { changeGlobalOption, isEngineReady } from '@/api/aria2'
 import { bytesToSize } from '@shared/utils'
 import { NIcon, NPopover, NInputNumber, NSelect, NButton, NSwitch, NDivider, NText } from 'naive-ui'
-import {
-  SpeedometerOutline,
-  ArrowUpOutline,
-  ArrowDownOutline,
-  LockClosedOutline,
-  TimerOutline,
-  PowerOutline,
-} from '@vicons/ionicons5'
+import { SpeedometerOutline, ArrowDownOutline, LockClosedOutline, TimerOutline, PowerOutline } from '@vicons/ionicons5'
 import {
   formatLimitBadge,
   parseSpeedLimitValue,
@@ -52,12 +45,10 @@ const shutdownWhenComplete = computed(() => !!preferenceStore.config.shutdownWhe
 /** Clock badge only when schedule is actually effective (both switches ON). */
 const isScheduleEffective = computed(() => isLimited.value && isScheduleActive.value)
 const downloadSpeed = computed(() => bytesToSize(String(stat.value.downloadSpeed)))
-const uploadSpeed = computed(() => bytesToSize(String(stat.value.uploadSpeed)))
 
 // ── Limit badge display ─────────────────────────────────────────────
 
 const dlLimitBadge = computed(() => formatLimitBadge(preferenceStore.config.maxOverallDownloadLimit))
-const ulLimitBadge = computed(() => formatLimitBadge(preferenceStore.config.maxOverallUploadLimit))
 
 // ── Adaptive width (grow instant, shrink debounced) ─────────────────
 // The outer capsule (.speedometer) uses a JS-driven `width` so that CSS
@@ -129,18 +120,13 @@ onBeforeUnmount(() => {
 const showPopover = ref(false)
 const popoverDlValue = ref(0)
 const popoverDlUnit = ref('K')
-const popoverUlValue = ref(0)
-const popoverUlUnit = ref('K')
 
 const speedUnitOptions = computed(speedUnits)
 
 function openPopover() {
   const dl = parseSpeedLimitValue(preferenceStore.config.maxOverallDownloadLimit)
-  const ul = parseSpeedLimitValue(preferenceStore.config.maxOverallUploadLimit)
   popoverDlValue.value = dl.num
   popoverDlUnit.value = dl.unit
-  popoverUlValue.value = ul.num
-  popoverUlUnit.value = ul.unit
   showPopover.value = true
 }
 
@@ -185,17 +171,15 @@ function handleContextMenu(e: MouseEvent) {
 async function handleApply() {
   if (!isEngineReady()) return
 
-  // Reject 0/0 — at least one direction must have a non-zero limit
-  if (popoverDlValue.value === 0 && popoverUlValue.value === 0) {
+  if (popoverDlValue.value === 0) {
     message.warning(t('app.speedometer-enter-values'))
     return
   }
 
   const dlStr = buildSpeedLimitString(popoverDlValue.value, popoverDlUnit.value)
-  const ulStr = buildSpeedLimitString(popoverUlValue.value, popoverUlUnit.value)
 
   try {
-    await applyCustomLimit(dlStr, ulStr, makeDeps())
+    await applyCustomLimit(dlStr, makeDeps())
     showPopover.value = false
     message.success(t('app.speedometer-limit-applied'))
   } catch (e) {
@@ -249,19 +233,6 @@ function handleShutdownToggle(enabled: boolean) {
             </i>
           </div>
           <div class="value">
-            <div class="speed-row upload">
-              <div class="speed-text">
-                <NIcon :size="10" class="speed-arrow"><ArrowUpOutline /></NIcon>
-                <em>{{ uploadSpeed }}/s</em>
-              </div>
-              <div class="limit-zone">
-                <span class="limit-sep">┊</span>
-                <Transition name="limit-fade" mode="out-in">
-                  <span v-if="isLimited" :key="'ul-' + ulLimitBadge" class="limit-value">{{ ulLimitBadge }}</span>
-                  <span v-else key="ul-inf" class="limit-value limit-inf">∞</span>
-                </Transition>
-              </div>
-            </div>
             <div class="speed-row download">
               <div class="speed-text">
                 <NIcon :size="10" class="speed-arrow"><ArrowDownOutline /></NIcon>
@@ -283,24 +254,6 @@ function handleShutdownToggle(enabled: boolean) {
     <!-- Speed limit configuration panel -->
     <div class="limit-panel">
       <div class="limit-panel-title">{{ t('app.speedometer-set-limit') }}</div>
-
-      <div class="limit-panel-row">
-        <div class="limit-panel-label">
-          <NIcon :size="12"><ArrowUpOutline /></NIcon>
-          <span>{{ t('app.speedometer-upload-limit') }}</span>
-        </div>
-        <div class="limit-panel-inputs">
-          <NInputNumber
-            v-model:value="popoverUlValue"
-            :min="0"
-            :max="65535"
-            :step="1"
-            size="small"
-            style="width: 100px"
-          />
-          <NSelect v-model:value="popoverUlUnit" :options="speedUnitOptions" size="small" style="width: 88px" />
-        </div>
-      </div>
 
       <div class="limit-panel-row">
         <div class="limit-panel-label">
@@ -482,17 +435,6 @@ function handleShutdownToggle(enabled: boolean) {
 .speed-arrow {
   flex-shrink: 0;
   opacity: 0.7;
-}
-.speed-row.upload {
-  color: var(--m3-outline);
-}
-.speed-row.upload em {
-  font-style: normal;
-  font-size: var(--font-size-2xs);
-  line-height: 14px;
-}
-.speed-row.upload .speed-arrow {
-  color: var(--m3-outline);
 }
 .speed-row.download {
   color: var(--m3-primary);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core'
 /**
- * @fileoverview Add task dialog: dual-tab layout (URI / Torrent) with AutoAnimate list transitions.
+ * @fileoverview Link download form in the standalone add-task window.
  * It fills the standalone add-task window.
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
@@ -14,31 +14,20 @@ import { usePreferenceNumericValidation } from '@/composables/usePreferenceNumer
 import { useHttpAuthStore } from '@/stores/httpAuth'
 import { useFilenamePreview } from '@/composables/useFilenamePreview'
 import { useDownloadPreview } from '@/composables/useDownloadPreview'
-import { knownBatchSize, useFreeSpace } from '@/composables/useFreeSpace'
-import { ADD_TASK_TYPE } from '@shared/constants'
+import { useFreeSpace } from '@/composables/useFreeSpace'
 import { bytesToSize, detectResource } from '@shared/utils'
 import {
-  createBatchItem,
   mergeRawUriLines,
   normalizeUriLines,
   extractDecodedFilename,
-  extractMagnetDisplayName,
   invalidInputOut,
 } from '@shared/utils/batchHelpers'
-import { resolveDownloadCategory, resolveFileSetCategory } from '@shared/utils/fileCategory'
+import { resolveDownloadCategory } from '@shared/utils/fileCategory'
 import { buildOuts } from '@shared/utils/rename'
-import {
-  buildEngineOptions,
-  classifySubmitError,
-  downloadPreviewRequests,
-  submitBatchItems,
-  submitManualUris,
-  getDownloadProxy,
-} from '@/composables/useAddTaskSubmit'
+import { classifySubmitError, downloadPreviewRequests, submitManualUris } from '@/composables/useAddTaskSubmit'
 import type { AddTaskForm, ManualUriSubmitResult } from '@/composables/useAddTaskSubmit'
 import { isValidAria2ProxyUrl } from '@shared/utils/proxy'
 import { handleTaskStart } from '@/composables/useTaskNotifyHandlers'
-import { isMagnetUri } from '@/composables/useMagnetFlow'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { logger } from '@shared/logger'
 import { getErrorMessage } from '@shared/utils/errorMessage'
@@ -54,15 +43,7 @@ import { parseChecksum } from '@shared/utils/checksum'
 import { findDuplicateTasks, type DuplicateTask } from '@/api/aria2'
 
 import {
-  isRemoteTorrentSource,
-  resolveUnresolvedItems,
-  retryTorrentInspection,
-  chooseTorrentFile as chooseTorrentFileImpl,
-} from '@/composables/useAddTaskFileOps'
-import {
   NCard,
-  NTabs,
-  NTabPane,
   NForm,
   NFormItem,
   NInput,
@@ -71,20 +52,16 @@ import {
   NSpace,
   NIcon,
   NInputGroup,
-  NTag,
-  NEllipsis,
   NSpin,
   NText,
   useDialog,
 } from 'naive-ui'
 import { useAppMessage } from '@/composables/useAppMessage'
-import type { BatchItem, BatchItemKind, BtFileSelectionItem, UserAgentProfile } from '@shared/types'
-import { FolderOpenOutline, CloudUploadOutline } from '@vicons/ionicons5'
-import { vMotionAutoAnimate } from '@/directives/motionAutoAnimate'
+import type { BatchItem, UserAgentProfile } from '@shared/types'
+import { FolderOpenOutline } from '@vicons/ionicons5'
 import { defaultMediaOptions, mediaOutputHint } from '@shared/utils/media'
 import AdvancedOptions from './addtask/AdvancedOptions.vue'
 import DirectoryPopover from '@/components/common/DirectoryPopover.vue'
-import BtFileSelector from '@/components/task/BtFileSelector.vue'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ close: []; submitted: [] }>()
@@ -103,35 +80,8 @@ const rememberedDirectory = computed(() =>
   preferenceStore.config.rememberSaveLocation ? preferenceStore.config.lastSaveLocation : '',
 )
 
-const activeTab = ref<BatchItemKind>(ADD_TASK_TYPE.URI)
-const tabsRef = ref<InstanceType<typeof import('naive-ui').NTabs> | null>(null)
-
-/**
- * Switch tab programmatically with correct animation direction.
- *
- * NTabs only computes `animationDirection` inside its internal `activateTab()`
- * handler (user clicks).  Programmatic `:value` changes skip that and always
- * default to `'next'`.  This helper mirrors the direction logic from the NTabs
- * source and sets it on the component instance before updating `activeTab`.
- */
-const TAB_ORDER = [ADD_TASK_TYPE.URI, ADD_TASK_TYPE.TORRENT] as const
-function switchTab(target: BatchItemKind): void {
-  if (activeTab.value === target) return
-  const inst = tabsRef.value as Record<string, unknown> | null
-  if (inst && 'animationDirection' in inst) {
-    const curIdx = TAB_ORDER.indexOf(activeTab.value as (typeof TAB_ORDER)[number])
-    const tgtIdx = TAB_ORDER.indexOf(target as (typeof TAB_ORDER)[number])
-    ;(inst as { animationDirection: string }).animationDirection = tgtIdx > curIdx ? 'next' : 'prev'
-  }
-  activeTab.value = target
-}
-
-function activateTab(value: string): void {
-  if (value === ADD_TASK_TYPE.URI || value === ADD_TASK_TYPE.TORRENT) activeTab.value = value
-}
 const showAdvanced = ref(false)
 const submitting = ref(false)
-const selectedBatchIndex = ref(0)
 const userAgentManuallyEdited = ref(false)
 const defaultTaskProxyMode = () => getDefaultTaskProxyMode(preferenceStore.config.proxy)
 const defaultTaskProxyServer = () => getDefaultTaskProxyServer(preferenceStore.config.proxy)
@@ -184,7 +134,7 @@ const firstRegularUri = computed(
     form.value.uris
       .split(/\r?\n/)
       .map((uri) => uri.trim())
-      .find((uri) => uri && !isMagnetUri(uri)) ?? '',
+      .find(Boolean) ?? '',
 )
 /** The form with the preference defaults a submission fills in. */
 function requestForm(): AddTaskForm {
@@ -283,32 +233,10 @@ function applyResolvedUserAgent() {
 
 const batch = computed(() => appStore.pendingBatch)
 const hasBatch = computed(() => batch.value.length > 0)
-const fileItems = computed(() => batch.value.filter((i) => i.kind !== 'uri'))
-const selectedItem = computed(() => fileItems.value[selectedBatchIndex.value] ?? null)
-const selectedTorrentFiles = computed<BtFileSelectionItem[]>(() =>
-  (selectedItem.value?.torrentMeta?.files ?? []).map((file) => {
-    const pathParts = file.path.split(/[/\\]/)
-    return {
-      index: Number(file.index),
-      name: pathParts[pathParts.length - 1] || file.path,
-      path: file.path,
-      length: Number(file.length),
-    }
-  }),
-)
-const selectedFileIndices = computed<number[]>({
-  get: () => selectedItem.value?.selectedFileIndices ?? [],
-  set: (indices) => {
-    if (selectedItem.value) selectedItem.value.selectedFileIndices = indices
-  },
-})
-const torrentItemsReady = computed(() =>
-  fileItems.value.every((item) => item.inspectionState === 'ready' && Boolean(item.selectedFileIndices?.length)),
-)
 /** A checksum names one file, so it applies to a single regular download. */
 const checksumAvailable = computed(() => {
   const uris = normalizeUriLines(form.value.uris)
-  return activeTab.value === ADD_TASK_TYPE.URI && uris.length === 1 && !isMagnetUri(uris[0])
+  return uris.length === 1
 })
 const checksumValid = computed(
   () => !checksumAvailable.value || !form.value.checksum?.trim() || parseChecksum(form.value.checksum) !== null,
@@ -318,7 +246,7 @@ const uriOptionsValid = computed(
     !form.value.uris.trim() ||
     (areConfigFieldsValid({ streamMaxConnections: form.value.streamMaxConnections }) && checksumValid.value),
 )
-const canSubmit = computed(() => uriOptionsValid.value && torrentItemsReady.value)
+const canSubmit = computed(() => uriOptionsValid.value && !!form.value.uris.trim())
 
 // Sync download settings with the latest preference every time the dialog
 // opens. AddTask is kept mounted (`:show` not `v-if`), so form values would
@@ -374,7 +302,7 @@ const categoryEnabled = computed(() => preferenceStore.config.fileCategoryEnable
 const dirLabel = computed(() => (categoryEnabled.value ? t('task.task-custom-dir') : t('task.task-dir')))
 
 async function resolveCategoryMatches(): Promise<Map<string, { label: string; directory: string }>> {
-  const uris = normalizeUriLines(form.value.uris).filter((uri) => !isMagnetUri(uri))
+  const uris = normalizeUriLines(form.value.uris)
   const outs = uris.length > 1 && form.value.out ? buildOuts(uris, form.value.out) : []
   const matched = new Map<string, { label: string; directory: string }>()
 
@@ -401,39 +329,16 @@ async function resolveCategoryMatches(): Promise<Map<string, { label: string; di
   return matched
 }
 
-async function resolveSelectedTorrentCategory(): Promise<{ label: string; directory: string } | undefined> {
-  const item = selectedItem.value
-  if (!item?.torrentMeta) return undefined
-
-  const selectedIndices = new Set(item.selectedFileIndices ?? [])
-  const category = await resolveFileSetCategory(
-    item.torrentMeta.files
-      .filter((file) => selectedIndices.has(Number(file.index)) && Number(file.length) > 0)
-      .map((file) => ({ path: file.path })),
-    preferenceStore.config.fileCategories,
-    preferenceStore.config.dir,
-    { urls: [item.source] },
-  )
-  if (!category) return undefined
-
-  return {
-    label: category.builtIn ? t(`preferences.${category.label}`) : category.label,
-    directory: category.directory,
-  }
-}
-
 const categoryMatches = ref(new Map<string, { label: string; directory: string }>())
 watch(
   () => [
     props.show,
     categoryEnabled.value,
     dirUserModified.value,
-    activeTab.value,
     form.value.uris,
     form.value.out,
     form.value.media,
     form.value.uriRequestContexts,
-    selectedItem.value,
     preferenceStore.config.fileCategories,
     preferenceStore.config.dir,
   ],
@@ -445,13 +350,7 @@ watch(
     categoryMatches.value = new Map()
     if (!props.show || !categoryEnabled.value || dirUserModified.value) return
     try {
-      let matches: Map<string, { label: string; directory: string }>
-      if (activeTab.value === ADD_TASK_TYPE.TORRENT) {
-        const category = await resolveSelectedTorrentCategory()
-        matches = category ? new Map([[category.directory, category]]) : new Map()
-      } else {
-        matches = await resolveCategoryMatches()
-      }
+      const matches = await resolveCategoryMatches()
       if (current) categoryMatches.value = matches
     } catch (error) {
       logger.warn('AddTask.categoryPreview', getErrorMessage(error))
@@ -473,20 +372,14 @@ const displayedDir = computed(() => {
 
 const space = useFreeSpace(
   displayedDir,
-  computed(() => knownBatchSize(batch.value) + knownUriSize.value),
+  computed(() => knownUriSize.value),
 )
 
 const categoryPreviewText = computed(() => {
   if (!categoryEnabled.value) return ''
   if (dirUserModified.value) return t('task.category-hint-overridden')
 
-  if (activeTab.value === ADD_TASK_TYPE.TORRENT) {
-    if (!selectedItem.value) return t('task.category-hint-active')
-    const matched = categoryMatchPreview.value
-    return matched ? t('task.category-match-single', { category: matched.label }) : t('task.category-match-none')
-  }
-
-  const uris = normalizeUriLines(form.value.uris).filter((uri) => !isMagnetUri(uri))
+  const uris = normalizeUriLines(form.value.uris)
   if (uris.length === 0) return t('task.category-hint-active')
 
   const matched = categoryMatchPreview.value
@@ -581,15 +474,9 @@ async function prepare(visible: boolean, onCleanup: (cleanup: () => void) => voi
     batchDidWrite = false
     return
   }
-  selectedBatchIndex.value = 0
 
   if (hasBatch.value) {
     rememberRequests(batch.value)
-    // The form opens on the tab for its items, before their files are read.
-    switchTab(fileItems.value.length > 0 ? ADD_TASK_TYPE.TORRENT : ADD_TASK_TYPE.URI)
-    // Resolve file-based items
-    await localResolveUnresolvedItems()
-    if (!current) return
     // Flush URI batch items into the editable textarea via normalized merge
     const uriItems = batch.value.filter((i) => i.kind === 'uri')
     if (uriItems.length > 0) {
@@ -604,10 +491,6 @@ async function prepare(visible: boolean, onCleanup: (cleanup: () => void) => voi
       appStore.pendingBatch = batch.value.filter((i) => i.kind !== 'uri')
     }
   } else {
-    // Only reset tab if batchWatcher hasn't already handled a programmatic
-    // switch — otherwise we'd cause a rapid URI→TORRENT bounce that
-    // confuses NTabs' animation direction.
-    if (!batchDidWrite) switchTab(ADD_TASK_TYPE.URI)
     // No batch — check clipboard for URIs
     try {
       const { readText } = await import('@tauri-apps/plugin-clipboard-manager')
@@ -621,13 +504,7 @@ async function prepare(visible: boolean, onCleanup: (cleanup: () => void) => voi
       if (text && detectResource(text, preferenceStore.config.clipboard)) {
         // The main window must not offer this link again once it is here (#751).
         void invoke('clipboard_offer', { text }).catch(() => {})
-        // Copied .torrent links open their file lists at once (#737).
-        const lines = normalizeUriLines(text)
-        if (preferenceStore.config.bittorrentEnabled && lines.length > 0 && lines.every(isRemoteTorrentSource)) {
-          appStore.enqueueBatch(lines.map((url) => createBatchItem('torrent', url)))
-        } else {
-          form.value.uris = text.trim()
-        }
+        form.value.uris = text.trim()
       }
     } catch (e) {
       logger.debug('AddTask.readClipboard', e)
@@ -643,7 +520,6 @@ watch(
     if (!props.show || newLen <= oldLen) return
     // Snapshot newly arrived items before any drain/resolve mutates the batch.
     rememberRequests(batch.value)
-    const newlyArrived = batch.value.slice(oldLen)
     const uriItems = batch.value.filter((i) => i.kind === 'uri')
     if (uriItems.length > 0) {
       batchDidWrite = true
@@ -658,42 +534,8 @@ watch(
       syncPendingExternalMetadata()
       appStore.pendingBatch = batch.value.filter((i) => i.kind !== 'uri')
     }
-    // Auto-switch tab SYNCHRONOUSLY (before any await) so NTabs computes
-    // the correct slide direction in the same render tick.
-    const hasNewFiles = newlyArrived.some((i) => i.kind !== 'uri')
-    const hasNewUris = newlyArrived.some((i) => i.kind === 'uri')
-    if (hasNewFiles) {
-      switchTab(ADD_TASK_TYPE.TORRENT)
-    } else if (hasNewUris) {
-      switchTab(ADD_TASK_TYPE.URI)
-    }
-    // Resolve file metadata asynchronously (doesn't affect tab choice).
-    await localResolveUnresolvedItems()
   },
 )
-
-// ── File resolution (delegated to useAddTaskFileOps) ────────────────
-
-async function localResolveUnresolvedItems() {
-  await resolveUnresolvedItems(batch.value, t, getDownloadProxy(preferenceStore.config.proxy))
-}
-
-async function chooseTorrentFile() {
-  await chooseTorrentFileImpl({
-    t,
-    batch,
-    fileItems,
-    selectedBatchIndex,
-    setPendingBatch: (items) => {
-      appStore.pendingBatch = items
-    },
-    showWarning: (msg) => message.warning(msg),
-  })
-}
-
-async function retryTorrent(item: BatchItem) {
-  await retryTorrentInspection(item, t, getDownloadProxy(preferenceStore.config.proxy))
-}
 
 async function chooseDirectory() {
   try {
@@ -721,18 +563,6 @@ function selectUserAgentProfile(profile: UserAgentProfile) {
   userAgentManuallyEdited.value = true
   form.value.userAgent = profile.value
   preferenceStore.recordRecentUserAgentProfile(profile.id)
-}
-
-async function removeBatchItem(item: BatchItem) {
-  if (submitting.value) return
-  try {
-    if (item.browserContext?.requestId) await invoke('cancel_download_request', { id: item.browserContext.requestId })
-  } catch (error) {
-    message.error(getErrorMessage(error))
-    return
-  }
-  appStore.pendingBatch = batch.value.filter((i) => i !== item)
-  selectedBatchIndex.value = Math.min(selectedBatchIndex.value, Math.max(0, fileItems.value.length - 1))
 }
 
 // ── Submit ───────────────────────────────────────────────────────────
@@ -779,7 +609,6 @@ function reset() {
   syncDefaultTaskProxy()
   userAgentManuallyEdited.value = false
   submitting.value = false
-  selectedBatchIndex.value = 0
 }
 
 type DuplicateChoice = 'skip' | 'add' | 'cancel'
@@ -811,7 +640,7 @@ function askDuplicateChoice(duplicates: DuplicateTask[]): Promise<DuplicateChoic
 
 /** URIs the user chose not to download again, or null to stay in the dialog. */
 async function duplicatesToSkip(): Promise<Set<string> | null> {
-  const uris = normalizeUriLines(form.value.uris).filter((uri) => !isMagnetUri(uri))
+  const uris = normalizeUriLines(form.value.uris)
   if (uris.length === 0) return new Set()
   let duplicates: DuplicateTask[]
   try {
@@ -847,15 +676,6 @@ async function handleSubmit() {
       return
     }
 
-    if (
-      !preferenceStore.config.bittorrentEnabled &&
-      (fileItems.value.length > 0 || normalizeUriLines(form.value.uris).some(isMagnetUri))
-    ) {
-      message.error(t('task.bittorrent-disabled'), { closable: true })
-      submitting.value = false
-      return
-    }
-
     const skipped = await duplicatesToSkip()
     if (!skipped) {
       submitting.value = false
@@ -869,78 +689,56 @@ async function handleSubmit() {
       out: outputName(),
       checksum: checksumAvailable.value ? form.value.checksum : '',
     }
-    const options = buildEngineOptions(effectiveForm)
     const fileCategory = {
       enabled: preferenceStore.config.fileCategoryEnabled && !dirUserModified.value && !rememberedDirectory.value,
       categories: preferenceStore.config.fileCategories,
       nameOf: announcedName,
     }
-    let manualResult: ManualUriSubmitResult = { submittedTaskNames: [], magnetGids: [], magnetFailures: [] }
+    let manualResult: ManualUriSubmitResult = { submittedTaskNames: [] }
 
-    if (hasBatch.value) {
-      await submitBatchItems(batch.value, options, taskStore, fileCategory)
-    }
     if (form.value.uris.trim()) {
       manualResult = await submitManualUris(effectiveForm, taskStore, fileCategory, skipped)
     }
 
-    const failedCount = batch.value.filter((i) => i.status === 'failed').length + manualResult.magnetFailures.length
-    if (failedCount > 0) {
-      message.warning(`${failedCount} ${t('task.failed') || 'failed'}`, { closable: true })
-    } else {
-      // ── Collect task names before the window closes and clears the form ──
-      const taskNames: string[] = []
-      for (const item of batch.value) {
-        if (item.status === 'submitted') {
-          taskNames.push(item.displayName)
+    const taskNames = manualResult.submittedTaskNames
+
+    if (effectiveForm.saveHttpAuth && effectiveForm.httpAuthUsername.trim()) {
+      const firstHttpUri = normalizeUriLines(effectiveForm.uris).find((uri) => /^https?:\/\//i.test(uri))
+      if (firstHttpUri) {
+        try {
+          await httpAuthStore.saveCredential({
+            url: firstHttpUri,
+            username: effectiveForm.httpAuthUsername,
+            password: effectiveForm.httpAuthPassword,
+          })
+          message.success(t('task.task-http-auth-saved'))
+        } catch (err) {
+          logger.warn('AddTask.httpAuth', `credential save failed: ${err}`)
         }
       }
-      taskNames.push(...manualResult.submittedTaskNames)
-      const allUris = normalizeUriLines(form.value.uris)
-      const magnetUris = allUris.filter(isMagnetUri)
-      for (let i = 0; i < manualResult.magnetGids.length; i++) {
-        const dn = magnetUris[i] ? extractMagnetDisplayName(magnetUris[i]) : ''
-        taskNames.push(dn || t('task.magnet-task'))
-      }
-
-      if (effectiveForm.saveHttpAuth && effectiveForm.httpAuthUsername.trim()) {
-        const firstHttpUri = normalizeUriLines(effectiveForm.uris).find((uri) => /^https?:\/\//i.test(uri))
-        if (firstHttpUri) {
-          try {
-            await httpAuthStore.saveCredential({
-              url: firstHttpUri,
-              username: effectiveForm.httpAuthUsername,
-              password: effectiveForm.httpAuthPassword,
-            })
-            message.success(t('task.task-http-auth-saved'))
-          } catch (err) {
-            logger.warn('AddTask.httpAuth', `credential save failed: ${err}`)
-          }
-        }
-      }
-
-      if (skipped.size > 0) message.info(t('task.duplicate-skipped', { count: skipped.size }))
-      const effectiveDir = effectiveForm.dir.trim()
-      if (dirUserModified.value && preferenceStore.config.rememberSaveLocation) {
-        preferenceStore.updatePreference({ lastSaveLocation: effectiveDir })
-        await preferenceStore.savePreference()
-      }
-      await handleClose(false)
-
-      // Recent directories follow successful submissions.
-
-      if (effectiveDir) {
-        preferenceStore.recordHistoryDirectory(effectiveDir)
-      }
-
-      // ── Start notification (aggregated) ────────────────────────
-      handleTaskStart(taskNames, {
-        messageInfo: message.info,
-        t,
-      })
-
-      emit('submitted')
     }
+
+    if (skipped.size > 0) message.info(t('task.duplicate-skipped', { count: skipped.size }))
+    const effectiveDir = effectiveForm.dir.trim()
+    if (dirUserModified.value && preferenceStore.config.rememberSaveLocation) {
+      preferenceStore.updatePreference({ lastSaveLocation: effectiveDir })
+      await preferenceStore.savePreference()
+    }
+    await handleClose(false)
+
+    // Recent directories follow successful submissions.
+
+    if (effectiveDir) {
+      preferenceStore.recordHistoryDirectory(effectiveDir)
+    }
+
+    // ── Start notification (aggregated) ────────────────────────
+    handleTaskStart(taskNames, {
+      messageInfo: message.info,
+      t,
+    })
+
+    emit('submitted')
   } catch (e: unknown) {
     const category = classifySubmitError(e)
     const errMsg = getErrorMessage(e, {
@@ -986,106 +784,17 @@ defineExpose({ dismiss: () => handleClose(), reset, prepared: () => opening })
       :segmented="{ footer: true }"
     >
       <NForm label-placement="left" label-width="110px">
-        <NTabs ref="tabsRef" data-reveal="1" :value="activeTab" type="line" animated @update:value="activateTab">
-          <!-- ── URI Tab ──────────────────────────────────────── -->
-          <NTabPane :name="ADD_TASK_TYPE.URI" :tab="t('task.uri-task') || 'URL'">
-            <div class="tab-pane-content">
-              <NFormItem :show-label="false" style="margin-bottom: 0">
-                <NInput
-                  v-model:value="form.uris"
-                  class="uri-input"
-                  type="textarea"
-                  :rows="5"
-                  :placeholder="t('task.uri-task-tips') || 'One URL per line'"
-                />
-              </NFormItem>
-            </div>
-          </NTabPane>
-
-          <!-- ── Torrent Tab ─────────────────────────────────── -->
-          <NTabPane
-            :name="ADD_TASK_TYPE.TORRENT"
-            :tab="t('task.torrent-task') || 'Torrent'"
-            :disabled="!preferenceStore.config.bittorrentEnabled"
-          >
-            <div v-motion-auto-animate="{ duration: 200, easing: 'ease-out' }" class="tab-pane-content">
-              <!-- Torrent panel: animated batch list + file detail -->
-              <div v-if="fileItems.length > 0" class="torrent-panel">
-                <!-- Batch list with AutoAnimate transitions -->
-                <div v-motion-auto-animate="{ duration: 200, easing: 'ease-out' }" class="batch-list">
-                  <div
-                    v-for="(item, idx) in fileItems"
-                    :key="item.id"
-                    class="batch-item"
-                    :class="{ 'batch-item-selected': idx === selectedBatchIndex }"
-                    @click="selectedBatchIndex = idx"
-                  >
-                    <div class="batch-item-main">
-                      <NEllipsis :style="{ maxWidth: '400px', flex: 1 }">{{ item.displayName }}</NEllipsis>
-                      <NSpace :size="4" align="center" :wrap="false">
-                        <NTag type="info" size="small" :bordered="false">
-                          {{ t('task.torrent-task') }}
-                        </NTag>
-                        <NButton quaternary size="tiny" @click.stop="removeBatchItem(item)">✕</NButton>
-                      </NSpace>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Add more files button -->
-                <NButton size="small" dashed block style="margin-top: 6px" @click="chooseTorrentFile">
-                  <template #icon>
-                    <NIcon><CloudUploadOutline /></NIcon>
-                  </template>
-                  {{ t('task.select-torrent') || 'Select torrent files' }}
-                </NButton>
-
-                <!-- Files read after the panel shows open beneath it instead of pushing it taller at once. -->
-                <div
-                  class="height-collapse"
-                  :class="{
-                    'height-collapse--open': selectedItem?.inspectionState === 'failed' || !!selectedItem?.torrentMeta,
-                  }"
-                >
-                  <div class="height-collapse__inner">
-                    <Transition name="content-fade" mode="out-in">
-                      <div
-                        v-if="selectedItem?.inspectionState === 'failed'"
-                        :key="`${selectedItem.id}-failed`"
-                        class="torrent-inspection-error"
-                      >
-                        <span>{{ selectedItem.error }}</span>
-                        <NButton size="tiny" type="primary" ghost @click="retryTorrent(selectedItem)">
-                          {{ t('app.retry') }}
-                        </NButton>
-                      </div>
-                      <div
-                        v-else-if="selectedItem?.torrentMeta"
-                        :key="selectedItem.id"
-                        class="torrent-inspection-result"
-                      >
-                        <BtFileSelector
-                          v-model:selected-indices="selectedFileIndices"
-                          :files="selectedTorrentFiles"
-                          :max-height="200"
-                        />
-                      </div>
-                    </Transition>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Upload zone: shown when no torrents loaded -->
-              <div v-if="fileItems.length === 0" class="torrent-upload-zone" @click="chooseTorrentFile">
-                <NIcon :size="36" :depth="3"><CloudUploadOutline /></NIcon>
-                <span class="torrent-upload-text">
-                  {{ t('task.select-torrent') || 'Drag torrent here or click to select' }}
-                </span>
-              </div>
-            </div>
-          </NTabPane>
-        </NTabs>
-
+        <div class="tab-pane-content">
+          <NFormItem :show-label="false" style="margin-bottom: 0">
+            <NInput
+              v-model:value="form.uris"
+              class="uri-input"
+              type="textarea"
+              :rows="5"
+              :placeholder="t('task.uri-task-tips') || 'One URL per line'"
+            />
+          </NFormItem>
+        </div>
         <!-- ── Download settings: always visible ──────────────── -->
         <div class="download-settings" data-reveal="2">
           <NFormItem :label="t('task.task-out') + ':'">
@@ -1157,7 +866,7 @@ defineExpose({ dismiss: () => handleClose(), reset, prepared: () => opening })
             :user-agent-profiles="preferenceStore.config.userAgentProfiles"
             :user-agent-rules="preferenceStore.config.userAgentRules"
             :recent-user-agent-profile-ids="preferenceStore.config.recentUserAgentProfileIds"
-            :media-mode="activeTab === ADD_TASK_TYPE.URI ? form.media?.mode : undefined"
+            :media-mode="form.media?.mode"
             @update:media-mode="
               (mode) => {
                 if (form.media) form.media.mode = mode
@@ -1230,58 +939,6 @@ defineExpose({ dismiss: () => handleClose(), reset, prepared: () => opening })
   hyphens: none;
 }
 
-/* ── Torrent panel ────────────────────────────────────────────────── */
-.torrent-panel {
-  margin-bottom: 12px;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--m3-outline-variant);
-  background: var(--m3-surface-container-low);
-}
-
-/* ── Batch list ───────────────────────────────────────────────────── */
-.batch-list {
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--m3-outline-variant);
-  overflow: hidden;
-}
-
-.torrent-inspection-result,
-.torrent-inspection-error {
-  margin-top: 8px;
-}
-
-.torrent-inspection-error {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--m3-error);
-}
-
-/* ── Upload zone (when no torrents) ───────────────────────────────── */
-.torrent-upload-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 138px;
-  border: 1px dashed var(--m3-drop-zone-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: border-color 0.2s cubic-bezier(0.2, 0, 0, 1);
-}
-.torrent-upload-zone:hover {
-  border-color: var(--m3-primary);
-}
-.torrent-upload-text {
-  font-size: var(--font-size-sm);
-  opacity: 0.6;
-}
-
-/* ── Download settings ────────────────────────────────────────────── */
 .download-settings {
   margin-top: 4px;
 }

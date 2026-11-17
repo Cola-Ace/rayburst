@@ -761,18 +761,7 @@ async fn probe_engine(
 async fn probe_engine_contract(
     client: &crate::services::tasks::TaskService,
 ) -> Result<(), AppError> {
-    const REQUIRED_METHODS: &[&str] = &[
-        "aria2.finishMedia",
-        "aria2.retryMedia",
-        "aria2.addBtPeers",
-        "aria2.ed2kSearch",
-        "aria2.forceBtRecheck",
-        "aria2.getBtSessionStatus",
-        "aria2.getBtTrackers",
-        "aria2.getEd2kSearchResults",
-        "aria2.replaceBtTrackers",
-        "aria2.replaceBtWebSeeds",
-    ];
+    const REQUIRED_METHODS: &[&str] = &["aria2.finishMedia", "aria2.retryMedia"];
 
     let version = client.get_version().await?;
     if version.get("product").and_then(serde_json::Value::as_str) != Some("aria2-next") {

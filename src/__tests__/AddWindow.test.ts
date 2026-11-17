@@ -49,7 +49,6 @@ vi.mock('@/composables/usePlatform', async () => {
   const { ref } = await import('vue')
   return { usePlatform: () => ({ platform: ref('linux'), isLinux: ref(true), isMac: ref(false) }) }
 })
-vi.mock('@/composables/useTorrentDrop', () => ({ listenForTorrentDrops: async () => () => {} }))
 vi.mock('@/composables/useWindowReveal', () => ({
   afterReveal: bridge.afterReveal,
   nextFrame: async () => {},
@@ -66,7 +65,6 @@ vi.mock('@/components/task/AddTask.vue', () => ({
   },
 }))
 vi.mock('@/components/layout/WindowControls.vue', () => ({ default: { template: '<div />' } }))
-vi.mock('@/components/task/TorrentDropOverlay.vue', () => ({ default: { template: '<div />' } }))
 
 const store = reactive({
   addTaskVisible: false,

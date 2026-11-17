@@ -50,7 +50,7 @@ impl PendingDeepLinkState {
 /// Return only argv entries that represent external download inputs.
 ///
 /// Used by the desktop single-instance callback. CLI flags are ignored; URL
-/// schemes and supported local metadata/torrent files are forwarded.
+/// schemes supported by the desktop are forwarded.
 pub fn filter_external_input_args(args: &[String]) -> Vec<String> {
     args.iter()
         .filter(|arg| {
@@ -58,10 +58,16 @@ pub fn filter_external_input_args(args: &[String]) -> Vec<String> {
                 return false;
             }
             let lower = arg.to_lowercase();
-            lower.contains("://")
-                || lower.starts_with("magnet:")
-                || lower.starts_with("ed2k://")
-                || lower.ends_with(".torrent")
+            [
+                "http://",
+                "https://",
+                "ftp://",
+                "sftp://",
+                "thunder://",
+                "rayburst://",
+            ]
+            .iter()
+            .any(|scheme| lower.starts_with(scheme))
         })
         .cloned()
         .collect()
@@ -233,9 +239,9 @@ mod tests {
         let args = vec![
             "/Applications/Rayburst.app".to_string(),
             "--flag".to_string(),
-            "file:///Users/example/ubuntu.torrent".to_string(),
-            "magnet:?xt=urn:btih:abc".to_string(),
-            "ed2k://|file|ubuntu.iso|123|0123456789abcdef0123456789abcdef|/".to_string(),
+            "https://example.test/ubuntu.zip".to_string(),
+            "https://example.test/a.zip".to_string(),
+            "sftp://example.test/ubuntu.iso".to_string(),
             "notes.txt".to_string(),
         ];
 
@@ -244,9 +250,9 @@ mod tests {
         assert_eq!(
             filtered,
             vec![
-                "file:///Users/example/ubuntu.torrent".to_string(),
-                "magnet:?xt=urn:btih:abc".to_string(),
-                "ed2k://|file|ubuntu.iso|123|0123456789abcdef0123456789abcdef|/".to_string()
+                "https://example.test/ubuntu.zip".to_string(),
+                "https://example.test/a.zip".to_string(),
+                "sftp://example.test/ubuntu.iso".to_string()
             ]
         );
     }
@@ -269,14 +275,14 @@ mod tests {
 
     #[test]
     fn pending_queue_deduplicates_urls_while_preserving_order() {
-        let mut queue = vec!["file:///Users/example/ubuntu.torrent".to_string()];
+        let mut queue = vec!["https://example.test/ubuntu.zip".to_string()];
         let added = append_unique_pending(
             &mut queue,
             &[
-                "file:///Users/example/ubuntu.torrent".to_string(),
-                "magnet:?xt=urn:btih:abc".to_string(),
-                "magnet:?xt=urn:btih:abc".to_string(),
-                "/Users/example/Fedora.torrent".to_string(),
+                "https://example.test/ubuntu.zip".to_string(),
+                "https://example.test/a.zip".to_string(),
+                "https://example.test/a.zip".to_string(),
+                "https://example.test/fedora.zip".to_string(),
             ],
         );
 
@@ -284,9 +290,9 @@ mod tests {
         assert_eq!(
             queue,
             vec![
-                "file:///Users/example/ubuntu.torrent".to_string(),
-                "magnet:?xt=urn:btih:abc".to_string(),
-                "/Users/example/Fedora.torrent".to_string(),
+                "https://example.test/ubuntu.zip".to_string(),
+                "https://example.test/a.zip".to_string(),
+                "https://example.test/fedora.zip".to_string(),
             ]
         );
     }
@@ -299,8 +305,8 @@ mod tests {
             append_unique_pending(
                 &mut inner.queue,
                 &[
-                    "file:///Users/example/ubuntu.torrent".to_string(),
-                    "magnet:?xt=urn:btih:abc".to_string(),
+                    "https://example.test/ubuntu.zip".to_string(),
+                    "https://example.test/a.zip".to_string(),
                 ],
             );
         }
@@ -309,8 +315,8 @@ mod tests {
         assert_eq!(
             first.urls,
             vec![
-                "file:///Users/example/ubuntu.torrent".to_string(),
-                "magnet:?xt=urn:btih:abc".to_string(),
+                "https://example.test/ubuntu.zip".to_string(),
+                "https://example.test/a.zip".to_string(),
             ]
         );
         assert!(!first.silent);

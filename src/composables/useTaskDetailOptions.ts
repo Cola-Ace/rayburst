@@ -20,7 +20,6 @@ import type { Aria2Task, Aria2EngineOptions, ProxyConfig } from '@shared/types'
 import { logger } from '@shared/logger'
 import { buildTaskProxyOptions, hasInvalidManualProxy, type TaskProxyMode } from '@shared/utils/proxy'
 import { formatSpeedLimit, parseSpeedLimit } from '@shared/utils/speedLimit'
-import { checkTaskIsBT } from '@shared/utils'
 
 // ── Constants ─────────────────────────────────────────────────────
 
@@ -45,7 +44,6 @@ export interface TaskDetailOptionsForm {
   customProxyUsername: string
   customProxyPassword: string
   maxDownloadLimit: string
-  maxUploadLimit: string
   uri: string
 }
 
@@ -120,14 +118,13 @@ function createEmptyForm(): TaskDetailOptionsForm {
     customProxyUsername: '',
     customProxyPassword: '',
     maxDownloadLimit: '0',
-    maxUploadLimit: '0',
     uri: '',
   }
 }
 
 /** The single source of a plain download, which the user may replace. */
 export function replaceableSource(task: Aria2Task | null): string {
-  if (!task || task.media || checkTaskIsBT(task) || task.files?.length !== 1) return ''
+  if (!task || task.media || task.files?.length !== 1) return ''
   const uri = task.files[0].uris?.[0]?.uri ?? ''
   return REPLACEABLE_SOURCE.test(uri) ? uri : ''
 }
@@ -168,7 +165,6 @@ function populateFormFromResponse(opts: Record<string, string>, form: TaskDetail
   form.customProxyUsername = (opts.allProxyUser as string) ?? ''
   form.customProxyPassword = (opts.allProxyPasswd as string) ?? ''
   form.maxDownloadLimit = normalizeLimit(opts.maxDownloadLimit)
-  form.maxUploadLimit = normalizeLimit(opts.maxUploadLimit)
 }
 
 // ── Changed-options diff builder ──────────────────────────────────
@@ -209,7 +205,6 @@ function buildChangedOptions(
     Object.assign(options, proxyOptions)
   }
   if (form.maxDownloadLimit !== loaded.maxDownloadLimit) options['max-download-limit'] = form.maxDownloadLimit
-  if (form.maxUploadLimit !== loaded.maxUploadLimit) options['max-upload-limit'] = form.maxUploadLimit
 
   return options
 }

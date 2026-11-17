@@ -20,190 +20,7 @@ export interface Aria2File {
   length: string
   completedLength: string
   selected: string
-  priority?: BtFilePriority
   uris: Aria2FileUri[]
-}
-
-/** BitTorrent metadata attached to a task when the download is a torrent. */
-export type Aria2BtState =
-  | 'adding'
-  | 'downloadingMetadata'
-  | 'checking'
-  | 'downloading'
-  | 'recovering'
-  | 'finished'
-  | 'seeding'
-  | 'paused'
-  | 'stopping'
-  | 'stopped'
-  | 'error'
-
-export type Aria2BtFileSelectionState = 'none' | 'awaiting' | 'ready' | 'applying'
-
-export interface Aria2BtError {
-  code: string
-  kind: string
-  category: string
-  message: string
-  recoverable: string
-  operation?: string
-  file?: string
-}
-
-export interface Aria2BtInfo {
-  info?: { name: string }
-  announceList?: string[][]
-  magnetLink?: string
-  creationDate?: number
-  comment?: string
-  mode?: string
-  privateTorrent?: string
-  state?: Aria2BtState
-  fileSelectionState?: Aria2BtFileSelectionState
-  error?: Aria2BtError
-  infoHashV1?: string
-  infoHashV2?: string
-  currentTracker?: string
-  numPeers?: string
-  connectingPeers?: string
-  handshakingPeers?: string
-  numSeeds?: string
-  progress?: string
-  availability?: string
-  failedLength?: string
-  redundantLength?: string
-  activeTime?: string
-  finishedTime?: string
-  connectCandidates?: string
-  uploadingPeers?: string
-  webSeeds?: string[]
-  numComplete?: string
-  numIncomplete?: string
-}
-
-/** ED2K metadata attached to a task when the download is an ED2K file link. */
-export interface Aria2Ed2kInfo {
-  ed2kLink?: string
-  hash?: string
-  name?: string
-  length?: string
-  completedLength?: string
-  partHashCount?: string
-  aichRoot?: string
-  serverCount?: string
-  connectedServerCount?: string
-  peerCount?: string
-  queuedPeerCount?: string
-  acceptedPeerCount?: string
-  deadPeerCount?: string
-  lowIdPeerCount?: string
-  callbackWaitingPeerCount?: string
-  kadNodeCount?: string
-  kadRouterCount?: string
-  kadFirewalled?: boolean
-  kadObservedAddressCount?: string
-  searchActive?: boolean
-  searchMoreResults?: boolean
-  searchResultCount?: string
-  sharingTime?: string
-  uploadingPeerCount?: string
-  waitingUploadPeerCount?: string
-  peerCreditCount?: string
-}
-
-export interface Ed2kSearchOptions {
-  fileType?: string
-  extension?: string
-  minSize?: string
-  maxSize?: string
-  minSourceCount?: string
-  minCompleteSourceCount?: string
-}
-
-export interface Ed2kSearchResult {
-  hash?: string
-  name?: string
-  length?: string
-  sourceCount?: string
-  completeSourceCount?: string
-  fileType?: string
-  extension?: string
-  sourceNetwork?: string
-  ed2kLink?: string
-}
-
-export interface Ed2kSearchResults {
-  gid?: string
-  status?: string
-  moreResults?: boolean
-  results?: Ed2kSearchResult[]
-  [key: string]: unknown
-}
-
-/** Remote peer information for an active BitTorrent task. */
-export interface Aria2Peer {
-  peerId?: string
-  peerClientName?: string
-  ip: string
-  port: string
-  bitfield: string
-  amChoking: string
-  peerChoking: string
-  downloadSpeed: string
-  uploadSpeed: string
-  seeder: string
-  state: 'connecting' | 'handshaking' | 'connected'
-  transport: 'tcp' | 'utp'
-  encryption: 'plain' | 'encryptedHandshake' | 'rc4' | 'tls'
-  sources: string[]
-  progress: string
-  flags: string
-  incoming: string
-  downloaded: string
-  uploaded: string
-  completedLength: string
-}
-
-export interface Aria2BtTrackerEndpoint {
-  localEndpoint: string
-  protocol: string
-  status: string
-  failures: string
-  seeders: string
-  leechers: string
-  downloads: string
-  nextAnnounce: string
-  minAnnounce: string
-  updating: string
-  verified: string
-  message?: string
-}
-
-export interface Aria2BtTracker {
-  url: string
-  source: 'metainfo' | 'magnet' | 'resume' | 'global' | 'rpc' | 'unknown'
-  tier: string
-  status: string
-  failures: string
-  seeders: string
-  leechers: string
-  downloads: string
-  nextAnnounce: string
-  minAnnounce: string
-  updating: string
-  verified: string
-  message?: string
-  endpoints: Aria2BtTrackerEndpoint[]
-}
-
-export interface Aria2BtTrackerConfig {
-  url: string
-  tier: number
-}
-
-export interface Aria2BtPeerAddResult {
-  added: number
-  failed: number
 }
 
 /**
@@ -248,32 +65,23 @@ export interface Aria2Media {
 
 export interface Aria2Task {
   selectionManaged?: boolean
-  selectionPrompt?: boolean
+  bitfield?: string
+  numPieces?: string
+  pieceLength?: string
   gid: string
   status: TaskStatus
   totalLength: string
   completedLength: string
-  uploadLength: string
   downloadSpeed: string
-  uploadSpeed: string
   connections: string
   dir: string
   files: Aria2File[]
-  bittorrent?: Aria2BtInfo
-  ed2k?: Aria2Ed2kInfo
   media?: Aria2Media
   mediaOptions?: Record<string, string>
-  infoHash?: string
-  numSeeders?: string
-  seeder?: string
-  bitfield?: string
   errorCode?: string
   errorMessage?: string
-  numPieces?: string
-  pieceLength?: string
   verifiedLength?: string
   verifyIntegrityPending?: string
-  peers?: Aria2Peer[]
   followedBy?: string[]
   following?: string
   belongsTo?: string
@@ -284,7 +92,6 @@ export interface Aria2Task {
 /** Parsed global statistics with numeric values (post-conversion from string). */
 export interface Aria2GlobalStat {
   downloadSpeed: number
-  uploadSpeed: number
   numActive: number
   numWaiting: number
   numStopped: number
@@ -306,7 +113,6 @@ export interface Aria2Version {
 /** Raw global statistics as returned by aria2 RPC (all values are strings). */
 export interface Aria2RawGlobalStat {
   downloadSpeed: string
-  uploadSpeed: string
   numActive: string
   numWaiting: string
   numStopped: string
@@ -354,23 +160,12 @@ export interface ClipboardConfig {
   http: boolean
   /** Detect sftp:// URLs. */
   sftp: boolean
-  /** Detect magnet: URIs. */
-  magnet: boolean
-  /** Detect ed2k:// file links. */
-  ed2k: boolean
+
   /** Detect thunder:// (迅雷) links. */
   thunder: boolean
   /** Ignore HTTP(S) links whose path names a web page rather than a file. */
   httpFilesOnly: boolean
-  /** Detect bare BitTorrent v1 and v2 info hashes. */
-  btHash: boolean
 }
-
-export type BtEncryptionMode = 'preferred' | 'required' | 'disabled'
-export type BtTransportMode = 'tcp' | 'utp' | 'both'
-export type BtBlocklistScope = 'peers' | 'peers-and-trackers' | 'all'
-export type MagnetFileSelectionPolicy = 'download-all' | 'prompt' | 'manual'
-export type BtFilePriority = 'off' | 'normal' | 'high' | 'top'
 
 /** A file category rule mapping extensions to a download directory. */
 export type FileCategoryUrlPatternMode = 'wildcard' | 'regex'
@@ -446,9 +241,7 @@ export interface AppConfig {
   streamMaxConnections: number
   maxConcurrentDownloads: number
   maxOverallDownloadLimit: string
-  maxOverallUploadLimit: string
   maxDownloadLimit: string
-  maxUploadLimit: string
   /** Whether the Speedometer speed limit toggle is active.
    *  When true, configured limits are applied to aria2 at runtime.
    *  When false, aria2 runs with 0 (unlimited) regardless of configured values. */
@@ -468,26 +261,7 @@ export interface AppConfig {
   fileCategoryEnabled: boolean
   /** User-configurable file classification rules. */
   fileCategories: FileCategory[]
-  shareTime: number
-  shareRatio: number
-  btMaxPeers: number
-  btMaxConnections: number
-  btMaxUploads: number
-  btMaxUploadsPerTorrent: number
-  btTransport: BtTransportMode
-  btFirstLastPieceFirst: boolean
-  /** BitTorrent pieces are downloaded in order, so a torrent's files finish one after another. */
-  btSequentialDownload: boolean
-  btRateLimitOverhead: boolean
-  btAnonymousMode: boolean
-  btUserAgent: string
-  btPeerIdPrefix: string
-  btBlocklistScope: BtBlocklistScope
-  btDhtEnabled: boolean
-  /** Off refuses magnet links and torrents everywhere. */
-  bittorrentEnabled: boolean
-  btPeerExchangeEnabled: boolean
-  btLocalPeerDiscoveryEnabled: boolean
+
   openAtLogin: boolean
   autoCheckUpdate: boolean
   autoHideWindow: boolean
@@ -495,13 +269,6 @@ export interface AppConfig {
   quitOnClose: boolean
   hideDockOnMinimize: boolean
   lightweightMode: boolean
-  btTrackerAutoSync: boolean
-  btTrackerSyncIntervalHours: number
-  btPeerBlocklistEnabled: boolean
-  btPeerBlocklistUrl: string
-  btPeerBlocklistAutoSync: boolean
-  btPeerBlocklistSyncIntervalHours: number
-  keepSharing: boolean
   keepWindowState: boolean
 
   mediaSelectBeforeDownload: boolean
@@ -514,7 +281,7 @@ export interface AppConfig {
   taskNotification: boolean
   /** OS notification when a download starts (gated by taskNotification). */
   notifyOnStart: boolean
-  /** OS notification when a download completes or BT enters seeding (gated by taskNotification). */
+
   notifyOnComplete: boolean
   /** When the floating window with speed and progress stays on top (#669, #718, #726). */
   floatWindow: FloatWindowMode
@@ -533,14 +300,10 @@ export interface AppConfig {
   clipboard: ClipboardConfig
   /** One policy owns confirmation and window activation for extension downloads. */
   extensionDownloadBehavior: 'confirm' | 'background' | 'show'
-  /** Browser .torrent links: open the torrent's content, or save the file like any download. */
-  extensionTorrentAction: 'open' | 'save'
-  trackerSource: string[]
-  customTrackerUrls: string[]
+
   historyDirectories: string[]
   favoriteDirectories: string[]
   lastCheckUpdateTime: number
-  lastSyncTrackerTime: number
   /** Linux-only: opt into WebKitGTK hardware compositing. */
   hardwareRendering: boolean
   updateChannel: UpdateChannel
@@ -573,29 +336,10 @@ export interface AppConfig {
   /** When true, aria2 RPC and the extension API listen on all network interfaces. */
   allowRemoteAccess: boolean
   /** Automatically switches locally bound ports when another process or OS reservation blocks them. */
-  listenPort: number
-  btExternalIp: string
-  btExternalPort: number
-  ed2kListenPort: number
-  ed2kUdpListenPort: number
-  ed2kServer: string
-  ed2kServerMetUrl: string
-  ed2kNodesDatUrl: string
-  ed2kBootstrapAutoSync: boolean
-  ed2kBootstrapSyncIntervalHours: number
-  ed2kUploadSlots: number
-  ed2kMaxConnections: number
-  ed2kPreviewPriority: boolean
-  ed2kSearchTimeout: number
-  btTracker: string
-  btEncryption: BtEncryptionMode
-  magnetFileSelectionPolicy: MagnetFileSelectionPolicy
   /** When true, aria2 applies the remote server's Last-Modified timestamp
    *  to the local file instead of using the download-completion time. */
   remoteTime: boolean
   autoCheckUpdateInterval: number
-  enableUpnp: boolean
-  deleteTorrentAfterComplete: boolean
   autoDeleteStaleRecords: boolean
   clearCompletedOnExit: boolean
   /** Completed history retention in days. 0 means keep forever. */
@@ -696,35 +440,6 @@ export interface UriFileCategoryPolicy {
   nameOf?: (uri: string) => string | undefined
 }
 
-/** Parameters for adding a torrent-based download task. */
-export interface AddTorrentParams {
-  requestId?: string
-  torrent: string
-  options: Aria2EngineOptions
-}
-
-export interface TorrentInspectionFile {
-  index: string
-  path: string
-  length: string
-}
-
-export interface TorrentInspection {
-  name: string
-  mode: 'single' | 'multi'
-  infoHashV1: string
-  infoHashV2: string
-  totalLength: string
-  files: TorrentInspectionFile[]
-}
-
-export interface BtFileSelectionItem {
-  index: number
-  name: string
-  path: string
-  length: number
-}
-
 /** Parameters for changing options on an existing task. */
 export interface TaskOptionParams {
   gid: string
@@ -742,9 +457,8 @@ export interface TauriUpdate {
 
 // ── Batch Add Task ──────────────────────────────────────────────────
 
-export type BatchItemKind = 'uri' | 'torrent'
+export type BatchItemKind = 'uri'
 export type BatchItemStatus = 'pending' | 'submitted' | 'failed'
-export type TorrentInspectionState = 'reading' | 'inspecting' | 'ready' | 'failed'
 
 /** A single item in the add-task batch queue. */
 export interface BatchItem {
@@ -755,16 +469,11 @@ export interface BatchItem {
   source: string
   /** Human-readable display name (filename or truncated URI). */
   displayName: string
-  /** URI text (for uri kind) or base64-encoded file content (for torrent). */
+
   payload: string
   /** Browser request context captured by the extension for this item. */
   browserContext?: ExternalDownloadContext
-  /** Native engine metainfo inspection for torrent items. */
-  torrentMeta?: TorrentInspection
-  /** File indexes selected for the torrent download. */
-  selectedFileIndices?: number[]
-  /** Independent pre-submission inspection state for torrent items. */
-  inspectionState?: TorrentInspectionState
+
   status: BatchItemStatus
   /** Error message when status is 'failed'. */
   error?: string
@@ -798,18 +507,7 @@ export interface HistoryMeta {
   completedLength?: string
   errorCode?: string
   errorMessage?: string
-  /** BT info hash — used for magnet link reconstruction on restart. */
-  infoHash?: string
-  /** Engine-serialized BT magnet link. */
-  magnetLink?: string
-  /** Engine-serialized ED2K file link. */
-  ed2kLink?: string
-  /** ED2K content identity; history ownership remains per GID. */
-  ed2kHash?: string
-  /** BT announce tiers — used to restore tracker-aware magnet restart links. */
-  announceList?: string[][]
-  /** Final duration spent actively sharing a P2P task. */
-  sharingTime?: string
+
   /** Complete file list with all URIs — present when files.length > 1. */
   files?: HistoryFileSnapshot[]
 }
@@ -820,9 +518,9 @@ export interface HistoryRecord {
   id?: number
   /** aria2 GID — unique identifier for deduplication. */
   gid: string
-  /** Display name of the downloaded file or torrent. */
+
   name: string
-  /** Primary download URI or magnet link. */
+
   uri?: string
   /** Local directory where the file was saved. */
   dir?: string
@@ -830,7 +528,7 @@ export interface HistoryRecord {
   total_length?: number
   /** Terminal status: 'complete', 'error', or 'removed'. */
   status: string
-  /** Download type: 'uri' or 'torrent'. */
+
   task_type?: string
   /** ISO 8601 timestamp when the task was first added to the download queue.
    *  Once set, never changes — used for position-stable ordering across all tabs. */
@@ -839,7 +537,7 @@ export interface HistoryRecord {
   created_at?: string
   /** ISO 8601 timestamp when the download finished. */
   completed_at?: string
-  /** JSON-encoded metadata (BT info hash, torrent source path, etc.). */
+
   meta?: string
 }
 
@@ -874,19 +572,15 @@ export interface TaskApi {
   fetchTaskList: (params: { type: string; limit?: number }) => Promise<Aria2Task[]>
   refreshTasks: () => Promise<TaskSnapshot>
   fetchTaskItem: (params: { gid: string }) => Promise<Aria2Task>
-  fetchTaskItemWithPeers: (params: { gid: string }) => Promise<Aria2Task & { peers: Aria2Peer[] }>
   fetchActiveTaskList: () => Promise<Aria2Task[]>
   addUri: (params: AddUriParams) => Promise<string[]>
   addUriAtomic: (params: { uris: string[]; options: Aria2EngineOptions }) => Promise<string>
-  addTorrent: (params: AddTorrentParams) => Promise<string>
   getOption: (params: { gid: string }) => Promise<Record<string, string>>
   changeOption: (params: TaskOptionParams) => Promise<void>
   getFiles: (params: { gid: string }) => Promise<Aria2File[]>
   removeTask: (params: { gid: string }) => Promise<string>
   deleteTask: (params: { gid: string } & TaskDeletionOptions) => Promise<void>
   batchDeleteTasks: (params: { tasks: BatchDeleteTaskTarget[] }) => Promise<BatchTaskOperationResult>
-  finishSharing: (params: { gid: string }) => Promise<void>
-  batchFinishSharing: (params: { gids: string[] }) => Promise<BatchTaskOperationResult>
   forcePauseTask: (params: { gid: string }) => Promise<string>
   forcePauseAll: () => Promise<string>
   pauseTask: (params: { gid: string }) => Promise<string>

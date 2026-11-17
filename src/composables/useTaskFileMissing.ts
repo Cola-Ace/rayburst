@@ -46,7 +46,7 @@ export function useTaskFileMissing(task: ComputedRef<Aria2Task>) {
     },
     { immediate: true },
   )
-  watch([() => task.value.status, () => task.value.seeder, recheckTrigger], inspect)
+  watch([() => task.value.status, recheckTrigger], inspect)
   onBeforeUnmount(() => {
     release(task.value.gid)
     inspect()

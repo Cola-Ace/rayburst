@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 export interface SelectionRequest {
-  kind: 'bt' | 'media'
+  kind: 'media'
   gid: string
 }
 
@@ -24,13 +24,12 @@ export const useTaskSelectionStore = defineStore('taskSelection', () => {
     if (!auto) deferred.value.delete(item.gid)
     if (item.gid !== current.value?.gid && !queue.value.some((entry) => entry.gid === item.gid)) queue.value.push(item)
   }
-  function reconcile(waiting: SelectionRequest[], available: SelectionRequest[], promptGids: string[] = []) {
+  function reconcile(waiting: SelectionRequest[], available: SelectionRequest[]) {
     pending.value = waiting
     const valid = new Set(available.map((item) => item.gid))
     queue.value = queue.value.filter((item) => valid.has(item.gid))
-    const prompts = new Set(promptGids)
     for (const item of waiting) {
-      if (item.kind === 'bt' ? prompts.has(item.gid) : automatic.value.has(item.gid)) request(item, true)
+      if (automatic.value.has(item.gid)) request(item, true)
     }
     if (current.value && !valid.has(current.value.gid)) close(false)
   }

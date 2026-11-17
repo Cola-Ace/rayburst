@@ -31,22 +31,6 @@ export const NUMERIC_CONFIG_CONSTRAINTS = {
   timeout: { min: 1, max: 600, integer: true },
   rpcListenPort: { min: 1024, max: 65535, integer: true },
   extensionApiPort: { min: 1024, max: 65535, integer: true },
-  listenPort: { min: 1024, max: 65535, integer: true },
-  btExternalPort: { min: 0, max: 65535, integer: true },
-  btMaxPeers: { min: 0, max: 500, integer: true },
-  btMaxConnections: { min: 2, max: 10000, integer: true },
-  btMaxUploads: { min: 1, max: 1000, integer: true },
-  btMaxUploadsPerTorrent: { min: 1, max: 1000, integer: true },
-  shareRatio: { min: 1, max: 100 },
-  shareTime: { min: 60, max: 525600, integer: true },
-  btTrackerSyncIntervalHours: { min: 0, max: 168, integer: true },
-  btPeerBlocklistSyncIntervalHours: { min: 0, max: 168, integer: true },
-  ed2kListenPort: { min: 0, max: 65535, integer: true },
-  ed2kUdpListenPort: { min: 0, max: 65535, integer: true },
-  ed2kUploadSlots: { min: 1, max: 100, integer: true },
-  ed2kMaxConnections: { min: 1, max: 1024, integer: true },
-  ed2kSearchTimeout: { min: 10, max: 600, integer: true },
-  ed2kBootstrapSyncIntervalHours: { min: 0, max: 168, integer: true },
   completedRecordRetentionDays: { min: 0, max: 3650, integer: true },
 } as const satisfies Partial<Record<keyof AppConfig, NumericConstraint>>
 
@@ -56,9 +40,6 @@ export const NUMERIC_CONFIG_ENUM_VALUES = {
   autoCheckUpdateInterval: [0, 24, 168, 720, 4320, 8760],
   uiScale: [0.8, 0.9, 1, 1.1, 1.25, 1.5],
   speedScheduleDays: [0, 31, 96],
-  btTrackerSyncIntervalHours: [0, 6, 12, 24, 168],
-  btPeerBlocklistSyncIntervalHours: [0, 6, 12, 24, 168],
-  ed2kBootstrapSyncIntervalHours: [0, 6, 12, 24, 168],
 } as const satisfies Partial<Record<keyof AppConfig, readonly number[]>>
 
 export function isNumericValueValid(value: unknown, constraint: NumericConstraint): value is number {

@@ -1,8 +1,6 @@
 /** @fileoverview Task metadata operations: naming, progress, task links, and open targets. */
 import { parseInt } from 'lodash-es'
-import { join } from '@tauri-apps/api/path'
 import type { Aria2Task, Aria2File } from '@shared/types'
-import type { I18nKey } from '@shared/i18nTypes'
 import { resolveTaskFilePath } from '@/composables/useTaskPaths'
 
 /** Download progress as a percentage with one decimal, rounded down so it never reads 100 early. */
@@ -48,22 +46,12 @@ const getFileNameFromFile = (file?: Aria2File): string => {
   }
 }
 
-/** Resolves a human-readable task name from BT info or file path. */
 export const getTaskName = (task: Aria2Task | null, options: { defaultName?: string } = {}): string => {
   const { defaultName = '' } = options
   let result = defaultName
   if (!task) return result
 
-  const { files, bittorrent } = task
-  if (bittorrent?.info?.name) return bittorrent.info.name
-  if (bittorrent?.magnetLink) {
-    try {
-      const displayName = new URL(bittorrent.magnetLink).searchParams.get('dn')?.trim()
-      if (displayName) return displayName
-    } catch {
-      // Continue through file-based fallbacks.
-    }
-  }
+  const { files } = task
   if (!files || files.length === 0) return result
 
   if (files.length === 1) {
@@ -78,86 +66,7 @@ export const getTaskName = (task: Aria2Task | null, options: { defaultName?: str
   return result
 }
 
-/** Returns true when native aria2 is still resolving torrent metadata. */
-export const isBtMetadataTask = (task: Aria2Task): boolean => {
-  if (!task.bittorrent) return false
-  if (task.bittorrent.info) return false
-  return task.bittorrent.state === 'adding' || task.bittorrent.state === 'downloadingMetadata'
-}
-
-export type TaskSharingKind = 'bt' | 'ed2k'
-export type TaskSharingPhase = 'active' | 'paused'
-
-export interface TaskSharingState {
-  kind: TaskSharingKind
-  phase: TaskSharingPhase
-}
-
-/** Returns the protocol and phase for a live P2P sharing task. */
-export const getTaskSharingState = (task: Aria2Task): TaskSharingState | null => {
-  if (task.seeder !== 'true' || (task.status !== 'active' && task.status !== 'paused')) return null
-  const kind = task.bittorrent ? 'bt' : task.ed2k ? 'ed2k' : null
-  return kind ? { kind, phase: task.status } : null
-}
-
-export const getTaskSharingKind = (task: Aria2Task): TaskSharingKind | null => {
-  return getTaskSharingState(task)?.kind ?? null
-}
-
-export const getTaskSharingPhase = (task: Aria2Task): TaskSharingPhase | null => {
-  return getTaskSharingState(task)?.phase ?? null
-}
-
-export const getTaskSharingTime = (task: Aria2Task): number => {
-  const value = task.bittorrent?.finishedTime ?? task.ed2k?.sharingTime
-  const seconds = Number(value)
-  return Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0
-}
-
-/** Returns true if the task is actively sharing completed content. */
-export const checkTaskIsSharing = (task: Aria2Task): boolean => {
-  return getTaskSharingPhase(task) === 'active'
-}
-
-export const getSharingActionLabelKey = (kind: TaskSharingKind, action: 'pause' | 'resume' | 'finish'): I18nKey => {
-  return kind === 'bt' ? `task.${action}-seeding` : `task.${action}-sharing`
-}
-
-export const getSharingStatusLabelKey = (state: TaskSharingState): I18nKey => {
-  if (state.phase === 'paused') return state.kind === 'bt' ? 'task.seeding-paused' : 'task.sharing-paused'
-  return state.kind === 'bt' ? 'task.seeding' : 'task.sharing'
-}
-
-export const getSharingResultLabelKey = (kind: TaskSharingKind, result: 'success' | 'fail'): I18nKey => {
-  return kind === 'bt' ? `task.finish-seeding-${result}` : `task.finish-sharing-${result}`
-}
-
-/** Returns true if the task is a BitTorrent download (has bittorrent metadata). */
-export const checkTaskIsBT = (task: Partial<Aria2Task> = {} as Partial<Aria2Task>): boolean => {
-  return !!task.bittorrent
-}
-
-/** Returns true for Aria2 Next internal ED2K search request groups. */
-export const checkTaskIsEd2kSearch = (task: Partial<Aria2Task> = {} as Partial<Aria2Task>): boolean => {
-  return !!(
-    task.ed2k?.searchActive === true || task.files?.some((file) => file.path.includes('aria2-next-ed2k-search-'))
-  )
-}
-
-/**
- * Collects all download URIs from a task.
- * For BT and ED2K tasks, returns the engine-serialized canonical link.
- * For stream tasks, iterates all files and extracts their URIs.
- */
-export const getTaskUris = (task: Aria2Task, _withTracker = false): string[] => {
-  const magnet = task.bittorrent?.magnetLink?.trim()
-  if (magnet) {
-    return magnet ? [magnet] : []
-  }
-  const ed2kLink = task.ed2k?.ed2kLink?.trim()
-  if (ed2kLink) {
-    return [ed2kLink]
-  }
+export const getTaskUris = (task: Aria2Task): string[] => {
   const { files } = task
   if (!files || files.length === 0) return []
   const uris: string[] = []
@@ -174,12 +83,7 @@ export interface TaskRestartDescriptor {
   path?: string
 }
 
-/** Keeps each output path with its mirrors; torrents retain their root directory. */
 export const getRestartDescriptors = (task: Aria2Task): TaskRestartDescriptor[] => {
-  const magnet = task.bittorrent?.magnetLink?.trim()
-  if (magnet) return [{ uris: [magnet] }]
-  const ed2kLink = task.ed2k?.ed2kLink?.trim()
-  if (ed2kLink) return [{ uris: [ed2kLink], path: task.files[0]?.path }]
   const { files } = task
   if (!files || files.length === 0) return []
   const descriptors: TaskRestartDescriptor[] = []
@@ -192,34 +96,17 @@ export const getRestartDescriptors = (task: Aria2Task): TaskRestartDescriptor[] 
   return descriptors
 }
 
-/** Returns the primary download URI or magnet link for a task. */
-export const getTaskUri = (task: Aria2Task, withTracker = false): string => {
-  const uris = getTaskUris(task, withTracker)
+export const getTaskUri = (task: Aria2Task): string => {
+  const uris = getTaskUris(task)
   return uris.length > 0 ? uris[0] : ''
 }
 
-/** Whether a stopped/errored/completed task can be re-submitted to aria2.
- *  Returns false when the record lacks both a download URI and a BT infoHash. */
 export const canRestart = (task: Aria2Task): boolean => {
-  return getTaskUris(task, true).length > 0
+  return getTaskUris(task).length > 0
 }
 
-/**
- * Resolves the filesystem target to open for a completed task.
- *
- * - BT multi-file: opens the torrent's root directory (`dir/torrentName`)
- * - BT single-file / HTTP: opens the downloaded file directly
- * - Fallback: opens the download directory when no file path is available
- */
 export const resolveOpenTarget = async (task: Aria2Task): Promise<string> => {
-  const { files, bittorrent, dir } = task
-
-  // BT multi-file: the torrent creates a subdirectory under `dir`
-  if (bittorrent?.info?.name && files.length > 1) {
-    return await join(dir, bittorrent.info.name)
-  }
-
-  // Single file (BT or HTTP): prefer archived path, then selected file
+  const { dir } = task
   const resolved = resolveTaskFilePath(task)
   if (resolved) return resolved
 
@@ -228,38 +115,3 @@ export const resolveOpenTarget = async (task: Aria2Task): Promise<string> => {
 }
 
 export { getFileNameFromFile }
-
-// ── Stable task identity (dedup of live tasks vs history records) ───
-
-export interface TaskIdentityBuckets {
-  gids: string[]
-  btInfoHashes: string[]
-  ed2kHashes: string[]
-  ed2kLinks: string[]
-}
-
-function addUnique(values: Set<string>, value: string | undefined): void {
-  const normalized = value?.trim()
-  if (normalized) values.add(normalized)
-}
-
-export function collectTaskIdentityBuckets(tasks: Aria2Task[]): TaskIdentityBuckets {
-  const gids = new Set<string>()
-  const btInfoHashes = new Set<string>()
-  const ed2kHashes = new Set<string>()
-  const ed2kLinks = new Set<string>()
-
-  for (const task of tasks) {
-    addUnique(gids, task.gid)
-    addUnique(btInfoHashes, task.infoHash)
-    addUnique(ed2kHashes, task.ed2k?.hash)
-    addUnique(ed2kLinks, task.ed2k?.ed2kLink)
-  }
-
-  return {
-    gids: [...gids],
-    btInfoHashes: [...btInfoHashes],
-    ed2kHashes: [...ed2kHashes],
-    ed2kLinks: [...ed2kLinks],
-  }
-}

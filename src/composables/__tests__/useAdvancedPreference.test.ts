@@ -12,7 +12,7 @@ describe('Advanced preference ownership', () => {
       'rpc-secret': form.rpcSecret,
     })
     expect(form).not.toHaveProperty('clipboardEnable')
-    expect(form).toHaveProperty('extensionTorrentAction')
+    expect(form).toHaveProperty('extensionDownloadBehavior')
   })
 })
 

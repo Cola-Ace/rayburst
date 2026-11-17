@@ -26,15 +26,6 @@ describe('changeKeysToKebabCase', () => {
     expect(changeKeysToKebabCase({ maxSpeed: 100 })).toEqual({ 'max-speed': 100 })
   })
 
-  it('keeps ED2K as one aria2 option prefix', () => {
-    expect(
-      changeKeysToKebabCase({ ed2kListenPort: 4663, ed2kServerMetUrl: 'https://example.test/server.met' }),
-    ).toEqual({
-      'ed2k-listen-port': 4663,
-      'ed2k-server-met-url': 'https://example.test/server.met',
-    })
-  })
-
   it('keeps Aria2 as one engine name prefix', () => {
     expect(changeKeysToKebabCase({ aria2LogLevel: 'warn' })).toEqual({ 'aria2-log-level': 'warn' })
   })
@@ -78,22 +69,6 @@ describe('checkIsNeedRestart', () => {
   it('returns true for rpcSecret', () => {
     expect(checkIsNeedRestart({ rpcSecret: 'new-secret-value' })).toBe(true)
   })
-  it('returns false for the hot-reloadable BitTorrent listen port', () => {
-    expect(checkIsNeedRestart({ listenPort: 21302 })).toBe(false)
-  })
-  it('keeps native BitTorrent settings hot-reloadable', () => {
-    expect(checkIsNeedRestart({ btDhtEnabled: false })).toBe(false)
-    expect(checkIsNeedRestart({ btPeerExchangeEnabled: false })).toBe(false)
-    expect(checkIsNeedRestart({ btLocalPeerDiscoveryEnabled: false })).toBe(false)
-    expect(checkIsNeedRestart({ btEncryption: 'required' })).toBe(false)
-    expect(checkIsNeedRestart({ btMaxPeers: 256 })).toBe(false)
-    expect(checkIsNeedRestart({ aria2LogLevel: 'info' })).toBe(false)
-  })
-  it('returns true for ED2K restart keys from AppConfig camelCase fields', () => {
-    expect(checkIsNeedRestart({ ed2kListenPort: 4663 })).toBe(true)
-    expect(checkIsNeedRestart({ ed2kServer: 'server.example:4661' })).toBe(true)
-    expect(checkIsNeedRestart({ ed2kUploadSlots: 4 })).toBe(true)
-  })
   it('returns false for non-restart keys', () => {
     expect(checkIsNeedRestart({ theme: 'dark' })).toBe(false)
   })
@@ -106,18 +81,6 @@ describe('formatOptionsForEngine', () => {
   it('converts keys to kebab-case', () => {
     const result = formatOptionsForEngine({ maxSpeed: '100' })
     expect(result).toHaveProperty('max-speed')
-  })
-  it('formats ED2K option keys with the aria2 ED2K prefix', () => {
-    const result = formatOptionsForEngine({
-      ed2kListenPort: 4663,
-      ed2kUdpListenPort: 4673,
-      ed2kServerMetUrl: 'https://example.test/server.met',
-    })
-    expect(result).toEqual({
-      'ed2k-listen-port': '4663',
-      'ed2k-udp-listen-port': '4673',
-      'ed2k-server-met-url': 'https://example.test/server.met',
-    })
   })
   it('joins arrays with newline', () => {
     const result = formatOptionsForEngine({ trackerSource: ['a', 'b'] })
@@ -154,36 +117,6 @@ describe('filterHotReloadableKeys', () => {
     expect(filterHotReloadableKeys(config)).toEqual(config)
   })
 
-  it('keeps the live BitTorrent endpoint and strips restart-only ports and secrets', () => {
-    const config = {
-      'rpc-listen-port': '29100',
-      'allow-remote-access': 'false',
-      'rpc-secret': 'abc',
-      'listen-port': '29120',
-      'bt-external-ip': '203.0.113.7',
-      'bt-external-port': '62000',
-      'ed2k-listen-port': '29140',
-      'ed2k-udp-listen-port': '29150',
-      'enable-dht': 'true',
-      'enable-peer-exchange': 'true',
-      'bt-enable-lpd': 'true',
-      'bt-encryption': 'enabled',
-      'bt-port-mapping': 'true',
-      'bt-max-peers': '128',
-    }
-    expect(filterHotReloadableKeys(config)).toEqual({
-      'listen-port': '29120',
-      'bt-external-ip': '203.0.113.7',
-      'bt-external-port': '62000',
-      'enable-dht': 'true',
-      'enable-peer-exchange': 'true',
-      'bt-enable-lpd': 'true',
-      'bt-encryption': 'enabled',
-      'bt-port-mapping': 'true',
-      'bt-max-peers': '128',
-    })
-  })
-
   it('strips aria2 changeGlobalOption exclusions', () => {
     const config = {
       checksum: 'sha-256=abc',
@@ -216,13 +149,11 @@ describe('filterHotReloadableKeys', () => {
       'max-concurrent-downloads': '8',
       'allow-remote-access': 'true',
       'rpc-listen-port': '29100',
-      'bt-tracker': 'udp://t.example.org:6969',
       'rpc-secret': 'secret',
       'user-agent': 'Rayburst/3.4.1',
     }
     expect(filterHotReloadableKeys(config)).toEqual({
       'max-concurrent-downloads': '8',
-      'bt-tracker': 'udp://t.example.org:6969',
       'user-agent': 'Rayburst/3.4.1',
     })
   })

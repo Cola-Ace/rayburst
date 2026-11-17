@@ -2,12 +2,10 @@
 mod credentials;
 mod history;
 mod rename;
-mod selection;
 use crate::error::AppError;
 pub use credentials::HttpAuthCredential;
 pub use history::{HistoryPage, HistoryPageInput, HistoryRecord};
 use rusqlite::Connection;
-pub use selection::{MagnetSelectionPolicy, SelectionIntent};
 use std::{path::Path, sync::Arc};
 use tokio::sync::{MappedMutexGuard, Mutex, MutexGuard};
 

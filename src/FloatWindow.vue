@@ -4,12 +4,12 @@
  *
  * A 52 px orb that stays on top, drawn with its shadow in a transparent
  * window. It fills from the bottom with the overall progress, like a level, under the received
- * speed while downloading and the sent speed while only seeding; otherwise its
+ * speed while downloading; otherwise its
  * sign tells what the queue waits for: servers, its turn, or the user. A check
  * follows the last download, the Rayburst mark rests in it, and a dot marks an
  * error. Only bytes arriving move it: a download of unknown size sends a
  * swell up its fill, everything else holds still. A click opens the panel
- * beside it, dragging moves it, links and torrents dropped on it open the add
+ * beside it, dragging moves it, links dropped on it open the add
  * window, and its context menu reaches the main window and switches when it
  * shows. The window never changes its size.
  */
@@ -20,7 +20,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { Menu } from '@tauri-apps/api/menu'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { NIcon } from 'naive-ui'
-import { Add, ArrowDown, ArrowUp, Checkmark, Pause, TimeOutline } from '@vicons/ionicons5'
+import { Add, ArrowDown, Checkmark, Pause, TimeOutline } from '@vicons/ionicons5'
 import aria2Api from '@/api/aria2'
 import { useFloatUpdates, type FloatUpdate } from '@/composables/useFloatUpdates'
 import { useFloatDrag } from '@/composables/useFloatDrag'
@@ -28,7 +28,7 @@ import { usePreferenceStore } from '@/stores/preference'
 import { useWindowScale } from '@/composables/useWindowScale'
 import { FLOAT_WINDOW_MODE_LABELS, FLOAT_WINDOW_MODES, TASK_STATUS } from '@shared/constants'
 import { bytesToSize } from '@shared/utils'
-import { createBatchItem, detectKind, encodeBase64, normalizeUriLines } from '@shared/utils/batchHelpers'
+import { normalizeUriLines } from '@shared/utils/batchHelpers'
 import { floatOrbState, type FloatOrbKind } from '@shared/utils/floatOrb'
 import { detectResource } from '@shared/utils/resource'
 import { getErrorMessage } from '@shared/utils/errorMessage'
@@ -45,7 +45,6 @@ type Face = FloatOrbKind | 'drop'
 const ICONS: Record<Exclude<Face, 'idle'>, Component> = {
   downloading: ArrowDown,
   connecting: ArrowDown,
-  seeding: ArrowUp,
   waiting: TimeOutline,
   paused: Pause,
   done: Checkmark,
@@ -77,9 +76,9 @@ const active = computed(() => state.value.kind === 'downloading' || state.value.
 
 const speed = computed(() => {
   const [value = '0', unit = ''] = bytesToSize(state.value.speed).split(' ')
-  return { value, unit: `${face.value === 'seeding' ? '↑ ' : ''}${unit}/s` }
+  return { value, unit: `${unit}/s` }
 })
-const showsSpeed = computed(() => face.value === 'downloading' || face.value === 'seeding')
+const showsSpeed = computed(() => face.value === 'downloading')
 const label = computed(() => {
   switch (face.value) {
     case 'connecting':
@@ -110,23 +109,20 @@ const fill = computed(() => (face.value === 'drop' ? 100 : Math.min(state.value.
 const tooltip = computed(() => {
   const stat = update.value?.stat
   if (!stat) return 'Rayburst'
-  const { kind, count, progress } = state.value
+  const { count, progress } = state.value
   return [
     showsSpeed.value || face.value === 'idle' ? '' : label.value,
-    `↓ ${bytesToSize(stat.downloadSpeed)}/s   ↑ ${bytesToSize(stat.uploadSpeed)}/s`,
+    `↓ ${bytesToSize(stat.downloadSpeed)}/s`,
     active.value ? `${t('task.status-active')} ${count}` : '',
-    kind === 'seeding' ? `${t('task.seeding')} ${count}` : '',
     active.value && progress != null ? `${progress}%` : '',
   ]
     .filter(Boolean)
     .join(' · ')
 })
 
-/** A torrent that turns to seeding as it completes is not a new download. */
+/** Greet tasks newly entering the active queue. */
 function greetNewDownloads(next: FloatUpdate) {
-  const started = next.tasks
-    .filter((task) => task.status === TASK_STATUS.ACTIVE && task.seeder !== 'true')
-    .map((task) => task.gid)
+  const started = next.tasks.filter((task) => task.status === TASK_STATUS.ACTIVE).map((task) => task.gid)
   if (known && started.some((gid) => !known?.has(gid))) pulse()
   if (started.length > 0) done.value = false
   known = new Set(started)
@@ -205,19 +201,13 @@ async function onDrop(event: DragEvent) {
   const data = event.dataTransfer
   if (!data) return
   const files = Array.from(data.files)
-  const torrents = files.filter((file) => detectKind(file.name) === 'torrent')
   // A file also comes as its path or `file:` link, which is not a download.
   const text = files.length > 0 ? '' : data.getData('text/uri-list') || data.getData('text/plain')
   const links = normalizeUriLines(text.replace(/^#.*$/gm, '')).filter((line) => detectResource(line))
   try {
-    const items = await Promise.all(
-      torrents.map(async (file) =>
-        createBatchItem('torrent', file.name, encodeBase64(new Uint8Array(await file.arrayBuffer()))),
-      ),
-    )
-    if (items.length === 0 && links.length === 0) return
+    if (links.length === 0) return
     pulse()
-    await invoke('add_window_open', { batch: { links, items } })
+    await invoke('add_window_open', { batch: { links } })
   } catch (error) {
     logger.warn('FloatWindow.drop', getErrorMessage(error))
   }
@@ -288,7 +278,6 @@ onMounted(async () => {
   unlisteners.push(
     // Lifecycle events reach every window.
     await listen('task-monitor:complete', celebrate),
-    await listen('task-monitor:p2p-download-complete', celebrate),
     await listen('task-monitor:error', () => (failed.value = true)),
     await view.listen('float:leave', () => (leaving.value = true)),
   )
@@ -418,7 +407,6 @@ onBeforeUnmount(() => {
   --orb-accent: var(--m3-info);
 }
 
-.orb--seeding,
 .orb--done {
   --orb-accent: var(--m3-success);
 }
@@ -450,7 +438,6 @@ onBeforeUnmount(() => {
 }
 
 /* A full fill needs no surface. */
-.orb--seeding .orb-fill-level,
 .orb--done .orb-fill-level,
 .orb--drop .orb-fill-level {
   box-shadow: none;

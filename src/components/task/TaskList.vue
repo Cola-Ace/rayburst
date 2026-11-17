@@ -17,7 +17,6 @@ const emit = defineEmits<{
   resume: [task: Aria2Task]
   retry: [task: Aria2Task]
   redownload: [task: Aria2Task]
-  'finish-sharing': [task: Aria2Task]
   'finish-media': [task: Aria2Task]
   delete: [task: Aria2Task]
   'delete-record': [task: Aria2Task]
@@ -25,7 +24,6 @@ const emit = defineEmits<{
   'show-info': [task: Aria2Task]
   folder: [task: Aria2Task]
   'open-file': [task: Aria2Task]
-  'select-files': [task: Aria2Task]
 }>()
 
 const taskStore = useTaskStore()
@@ -313,7 +311,6 @@ function handleCardBeforeLeave(element: Element) {
             @resume="emit('resume', item)"
             @retry="emit('retry', item)"
             @redownload="emit('redownload', item)"
-            @finish-sharing="emit('finish-sharing', item)"
             @finish-media="emit('finish-media', item)"
             @delete="emit('delete', item)"
             @delete-record="emit('delete-record', item)"
@@ -321,7 +318,6 @@ function handleCardBeforeLeave(element: Element) {
             @show-info="emit('show-info', item)"
             @folder="emit('folder', item)"
             @open-file="emit('open-file', item)"
-            @select-files="emit('select-files', item)"
           />
         </div>
       </TransitionGroup>

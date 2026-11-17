@@ -45,7 +45,6 @@ export const DEFAULT_CUSTOM_COLOR_SCHEME = BRAND_COLOR
 
 export const ADD_TASK_TYPE = {
   URI: 'uri',
-  TORRENT: 'torrent',
 } as const
 
 export const TASK_STATUS = {
@@ -55,7 +54,6 @@ export const TASK_STATUS = {
   ERROR: 'error',
   COMPLETE: 'complete',
   REMOVED: 'removed',
-  SHARING: 'sharing',
 }
 
 export const APP_LOG_LEVELS = ['error', 'warn', 'info', 'debug'] as const satisfies readonly AppLogLevel[]
@@ -64,26 +62,13 @@ export const ARIA2_LOG_LEVELS = ['error', 'warn', 'info', 'debug', 'trace'] as c
 export const MAX_NUM_OF_DIRECTORIES = 5
 export const ENGINE_RPC_PORT = 29100
 export const EXTENSION_API_PORT = 29110
-export const BT_LISTEN_PORT = 29120
-export const ED2K_LISTEN_PORT = 29140
-export const ED2K_UDP_LISTEN_PORT = 29150
-export const ED2K_SERVER_MET_URL = 'https://upd.emule-security.org/server.met'
-export const ED2K_NODES_DAT_URL = 'https://upd.emule-security.org/nodes.dat'
-export const BT_PEER_BLOCKLIST_URL = 'https://bcr.pbh-btn.com/combine/all.txt'
 export const RANDOM_PORT_RANGE_START = 29000
 export const RANDOM_PORT_RANGE_END = 29999
 export const ENGINE_DEFAULT_STREAM_CONNECTIONS = 16
-export const ENGINE_DEFAULT_BT_MAX_PEERS = 128
-export const ENGINE_DEFAULT_BT_USER_AGENT = 'qBittorrent/5.2.3'
-export const ENGINE_DEFAULT_BT_PEER_ID_PREFIX = '-qB5230-'
 
 // Safe thresholds — values above these trigger a user confirmation warning.
 // These are "recommended" values displayed in UI labels; exceeding them is allowed
 // but requires explicit opt-in via a warning dialog.
-export const SAFE_LIMIT_BT_MAX_PEERS = 128
-
-export const UNKNOWN_PEERID = '%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00%00'
-export const UNKNOWN_PEERID_NAME = 'unknown'
 
 export const ONE_SECOND = 1000
 export const ONE_MINUTE = ONE_SECOND * 60
@@ -104,25 +89,6 @@ export const FLOAT_WINDOW_MODE_LABELS = {
   downloading: 'preferences.float-window-downloading',
   off: 'preferences.float-window-off',
 } as const satisfies Record<FloatWindowMode, I18nKey>
-
-/**
- * Factory default values for every AppConfig field.
- * **This is the single source of truth** for both first-launch initialization
- * and the "Restore Defaults" action. All fallbacks in buildGeneralForm(),
- * buildDownloadsForm(), buildBtForm(), buildNetworkForm(), and
- * buildAdvancedForm() must reference these values via `?? D.field`.
- *
- * Each value is justified by industry research:
- * - Aria2 Next native defaults and accepted ranges
- * - BT client conventions (qBittorrent, Transmission, Deluge)
- * - Download manager standards (IDM, FDM, Rayburst)
- * - Security best practices (UPnP off, rpcSecret generated at runtime)
- *
- * Dynamic values handled at runtime:
- * - `locale: ''`    → OS locale detection in main.ts
- * - `dir: ''`       → user-visible download directory resolver at runtime
- * - `rpcSecret`     → ABSENT from defaults; auto-generated on first launch in main.ts
- */
 
 /** Day-of-week bitmask constants for speed schedule. Mon=1 … Sun=64. */
 export const SCHEDULE_DAY = {
@@ -192,22 +158,6 @@ export function buildDefaultCategories(): import('@shared/types').FileCategory[]
 /** Maximum number of file categories a user can create (built-in + custom). */
 export const MAX_FILE_CATEGORIES = 20
 
-/** Official, independently hosted tracker-list sources. */
-export const TRACKER_SOURCE_OPTIONS = [
-  {
-    owner: 'ngosang',
-    repository: 'trackerslist',
-    value: 'https://ngosang.github.io/trackerslist/trackers_best.txt',
-  },
-  {
-    owner: 'XIU2',
-    repository: 'TrackersListCollection',
-    value: 'https://cf.trackerslist.com/best.txt',
-  },
-] as const
-
-export const DEFAULT_TRACKER_SOURCE = TRACKER_SOURCE_OPTIONS.map((source) => source.value)
-
 export const DEFAULT_APP_CONFIG = {
   // ── Appearance ──────────────────────────────────────────────────
   theme: 'auto' as const,
@@ -230,43 +180,16 @@ export const DEFAULT_APP_CONFIG = {
   streamMaxConnections: ENGINE_DEFAULT_STREAM_CONNECTIONS,
   maxConcurrentDownloads: 6,
   maxOverallDownloadLimit: '0',
-  maxOverallUploadLimit: '0',
   speedLimitEnabled: false,
   speedScheduleEnabled: false,
   speedScheduleFrom: '08:00',
   speedScheduleTo: '18:00',
   speedScheduleDays: 0, // 0 = every day
   maxDownloadLimit: '',
-  maxUploadLimit: '',
 
   // ── File Classification (IDM-style pre-download routing) ──────
   fileCategoryEnabled: false, // opt-in: does not affect existing users until enabled
   fileCategories: [] as import('@shared/types').FileCategory[],
-
-  // ── P2P Sharing (BT + ED2K) ────────────────────────────────────
-  shareRatio: 2, // Transmission/qBT-style default for healthy P2P contribution
-  shareTime: 2880, // 48h default sharing window
-  keepSharing: false, // stop by condition by default
-
-  // ── BitTorrent (qBT/Transmission/Deluge conventions) ──────────
-  btMaxPeers: ENGINE_DEFAULT_BT_MAX_PEERS,
-  btMaxConnections: 500,
-  btMaxUploads: 20,
-  btMaxUploadsPerTorrent: 4,
-  btTransport: 'both' as const,
-  btFirstLastPieceFirst: false,
-  btSequentialDownload: false,
-  btRateLimitOverhead: false,
-  btAnonymousMode: false,
-  btUserAgent: ENGINE_DEFAULT_BT_USER_AGENT,
-  btPeerIdPrefix: ENGINE_DEFAULT_BT_PEER_ID_PREFIX,
-  btBlocklistScope: 'peers' as const,
-  btDhtEnabled: true,
-  bittorrentEnabled: true,
-  btPeerExchangeEnabled: true, // improves peer discovery inside active swarms
-  btLocalPeerDiscoveryEnabled: true,
-  btEncryption: 'preferred' as const,
-  magnetFileSelectionPolicy: 'prompt' as const,
   remoteTime: false, // aria2 default=false; file timestamp = download completion time
 
   // ── Interface & Behavior ──────────────────────────────────────
@@ -304,7 +227,6 @@ export const DEFAULT_APP_CONFIG = {
   lastCheckUpdateTime: 0,
 
   // ── Network & Security ────────────────────────────────────────
-  enableUpnp: true, // Allows inbound BitTorrent connections behind NAT.
   rpcListenPort: ENGINE_RPC_PORT,
   extensionApiPort: EXTENSION_API_PORT,
   allowRemoteAccess: false,
@@ -314,39 +236,23 @@ export const DEFAULT_APP_CONFIG = {
   //   undefined → main.ts auto-generates on first launch.
   //   '' → user intentionally cleared (respected, not regenerated).
   //   'abc' → user-set or auto-generated secret (kept as-is).
-  listenPort: BT_LISTEN_PORT,
-  btExternalIp: '',
-  btExternalPort: 0,
-  ed2kListenPort: ED2K_LISTEN_PORT,
-  ed2kUdpListenPort: ED2K_UDP_LISTEN_PORT,
-  ed2kServer: '',
-  ed2kServerMetUrl: ED2K_SERVER_MET_URL,
-  ed2kNodesDatUrl: ED2K_NODES_DAT_URL,
-  ed2kUploadSlots: 3,
-  ed2kMaxConnections: 20,
-  ed2kPreviewPriority: false,
-  ed2kSearchTimeout: 20,
   proxy: {
     mode: 'direct' as const,
     server: '',
     username: '',
     password: '',
     bypass: '',
-    scope: ['download', 'bittorrent', 'update-app', 'update-trackers'],
+    scope: ['download', 'update-app'],
   },
   clipboard: {
     enable: true,
     background: false,
     http: true,
     sftp: true,
-    magnet: true,
-    ed2k: true,
     thunder: true,
-    btHash: true,
     httpFilesOnly: true,
   },
   extensionDownloadBehavior: 'confirm' as const,
-  extensionTorrentAction: 'open' as const,
   userAgent:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
   userAgentProfiles: [],
@@ -364,26 +270,11 @@ export const DEFAULT_APP_CONFIG = {
   runMode: '',
   tempFilesDir: '',
 
-  // ── Tracker ───────────────────────────────────────────────────
-  btTrackerAutoSync: true,
-  btTrackerSyncIntervalHours: 24,
-  btPeerBlocklistEnabled: true,
-  btPeerBlocklistUrl: BT_PEER_BLOCKLIST_URL,
-  btPeerBlocklistAutoSync: true,
-  btPeerBlocklistSyncIntervalHours: 24,
-  trackerSource: [...DEFAULT_TRACKER_SOURCE],
-  customTrackerUrls: [] as string[],
-  btTracker: '',
-  lastSyncTrackerTime: 0,
-  ed2kBootstrapAutoSync: true,
-  ed2kBootstrapSyncIntervalHours: 24,
-
   // ── Directories ───────────────────────────────────────────────
   historyDirectories: [] as string[],
   favoriteDirectories: [] as string[],
 
   // ── Cleanup ───────────────────────────────────────────────────
-  deleteTorrentAfterComplete: false,
   autoDeleteStaleRecords: false,
   clearCompletedOnExit: false,
   completedRecordRetentionDays: COMPLETED_RECORD_RETENTION_FOREVER,
@@ -409,22 +300,15 @@ export const FILE_ALLOCATION_OPTIONS = ['none', 'trunc', 'prealloc', 'falloc'] a
 
 export const PROXY_SCOPES = {
   DOWNLOAD: 'download',
-  BITTORRENT: 'bittorrent',
   UPDATE_APP: 'update-app',
-  UPDATE_TRACKERS: 'update-trackers',
 }
 
-export const PROXY_SCOPE_OPTIONS = [
-  PROXY_SCOPES.DOWNLOAD,
-  PROXY_SCOPES.BITTORRENT,
-  PROXY_SCOPES.UPDATE_APP,
-  PROXY_SCOPES.UPDATE_TRACKERS,
-]
+export const PROXY_SCOPE_OPTIONS = [PROXY_SCOPES.DOWNLOAD, PROXY_SCOPES.UPDATE_APP]
 
 export const NONE_SELECTED_FILES = 'none'
 export const SELECTED_ALL_FILES = 'all'
 
-export const COMMON_RESOURCE_TAGS = ['http://', 'https://', 'sftp://', 'magnet:', 'ed2k://']
+export const COMMON_RESOURCE_TAGS = ['http://', 'https://', 'sftp://']
 export const THUNDER_RESOURCE_TAGS = ['thunder://']
 
 export const RESOURCE_TAGS = [...COMMON_RESOURCE_TAGS, ...THUNDER_RESOURCE_TAGS]
@@ -438,15 +322,6 @@ export const DETECT_RESOURCE_MAX_CHARS = 100_000
  * batch-download scenarios (the old 2048-char limit broke at ~13 URLs).
  */
 export const DETECT_RESOURCE_MAX_LINES = 200
-
-/**
- * Matches bare BitTorrent info hashes:
- * - SHA-1 hex: exactly 40 hex characters (most common format)
- * - Base32:    exactly 32 uppercase A-Z / 2-7 characters
- *
- * - SHA-256 hex: exactly 64 hexadecimal characters (BitTorrent v2)
- */
-export const BARE_INFO_HASH_RE = /^(?:[0-9a-fA-F]{40}|[A-Z2-7]{32}|[0-9a-fA-F]{64})$/
 
 export const IMAGE_SUFFIXES = [
   '.ai',

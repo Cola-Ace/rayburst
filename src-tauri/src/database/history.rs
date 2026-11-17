@@ -198,7 +198,6 @@ impl Database {
         let transaction = conn.transaction()?;
         transaction.execute("DELETE FROM download_history WHERE gid = ?1", params![gid])?;
         transaction.execute("DELETE FROM task_birth WHERE gid = ?1", params![gid])?;
-        transaction.execute("DELETE FROM bt_selection WHERE gid = ?1", params![gid])?;
         transaction.commit()?;
         Ok(())
     }
@@ -463,7 +462,7 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let rec1 = HistoryRecord {
             added_at: Some("2025-01-01T00:00:00Z".to_string()),
-            meta: Some(r#"{"infoHash":"abc"}"#.to_string()),
+            meta: Some(r#"{"uri":"https://example.test/file.zip"}"#.to_string()),
             ..make_record("gid001", "test.zip", "complete")
         };
         db.add_record(&rec1).await.unwrap();
@@ -472,7 +471,7 @@ mod tests {
         let rec2 = HistoryRecord {
             added_at: Some("2025-06-01T00:00:00Z".to_string()),
             completed_at: Some("2025-06-01T01:00:00Z".to_string()),
-            meta: Some(r#"{"sharingTime":"3600"}"#.to_string()),
+            meta: Some(r#"{"completedLength":"3600"}"#.to_string()),
             status: "complete".to_string(),
             ..make_record("gid001", "test-updated.zip", "complete")
         };
@@ -489,8 +488,8 @@ mod tests {
         );
         let meta: serde_json::Value =
             serde_json::from_str(records[0].meta.as_deref().unwrap()).unwrap();
-        assert_eq!(meta["infoHash"], "abc");
-        assert_eq!(meta["sharingTime"], "3600");
+        assert_eq!(meta["uri"], "https://example.test/file.zip");
+        assert_eq!(meta["completedLength"], "3600");
     }
 
     #[tokio::test]
@@ -623,14 +622,14 @@ mod tests {
         assert_eq!(db.get_records(None).await.unwrap().len(), 1);
     }
 
-    // ── InfoHash operations ─────────────────────────────────────────
+    // ── Content-copy independence ─────────────────────────────────────────
 
     #[tokio::test]
     async fn deleting_one_gid_preserves_another_copy_of_the_same_content() {
         let db = Database::open_in_memory().unwrap();
         for gid in ["g1", "g2"] {
             let mut record = make_record(gid, "same.zip", "complete");
-            record.meta = Some(r#"{"infoHash":"same"}"#.into());
+            record.meta = Some(r#"{"uri":"https://example.test/same.zip"}"#.into());
             db.add_record(&record).await.unwrap();
         }
         db.remove_task_records("g1").await.unwrap();

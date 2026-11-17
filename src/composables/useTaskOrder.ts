@@ -6,7 +6,7 @@
  * remains fixed regardless of status transitions or batch operations.
  *
  * Lifecycle:
- *   addUri/addTorrent → registerAddedAt(gid, now)
+ *   addUri            → registerAddedAt(gid, now)
  *   fetchList poll    → trackFirstSeen(tasks) — fallback for session-restored tasks
  *   task_birth        → Rust lifecycle writer preserves download_history.added_at
  *   App start         → loadBirthRecords() → pre-populate from task_birth table

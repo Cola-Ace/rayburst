@@ -12,7 +12,7 @@ let receive: (event: { payload: FloatUpdate }) => void
 const cleanups: (() => void)[] = []
 
 function snapshot(speed = 0): FloatUpdate {
-  return { stat: { downloadSpeed: speed, uploadSpeed: 0, numActive: speed > 0 ? 1 : 0 }, progress: null, tasks: [] }
+  return { stat: { downloadSpeed: speed, numActive: speed > 0 ? 1 : 0 }, progress: null, tasks: [] }
 }
 
 function setup() {

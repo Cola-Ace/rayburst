@@ -3,7 +3,7 @@
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
-import { useTaskSelectionStore } from '@/stores/taskSelection'
+
 import { usePreferenceStore } from '@/stores/preference'
 
 import { useTaskActions } from '@/composables/useTaskActions'
@@ -28,7 +28,6 @@ const {
   handleResumeTask,
   handleRetryTask,
   handleRedownloadTask,
-  handleFinishSharing,
   handleFinishMedia,
   handleDeleteTask,
   handleDeleteRecord,
@@ -36,14 +35,12 @@ const {
   handleShowInfo,
   handleShowInFolder,
   handleOpenFile,
-  handleSelectFiles,
 } = useTaskActions({
   taskStore,
   preferenceConfig: () => preferenceStore.config,
   t,
   dialog,
   message,
-  requestMagnetSelection: (gid) => useTaskSelectionStore().request({ kind: 'bt', gid }),
 })
 
 watch(
@@ -65,7 +62,6 @@ watch(
           @resume="handleResumeTask"
           @retry="handleRetryTask"
           @redownload="handleRedownloadTask"
-          @finish-sharing="handleFinishSharing"
           @finish-media="handleFinishMedia"
           @delete="handleDeleteTask"
           @delete-record="handleDeleteRecord"
@@ -73,7 +69,6 @@ watch(
           @show-info="handleShowInfo"
           @folder="handleShowInFolder"
           @open-file="handleOpenFile"
-          @select-files="handleSelectFiles"
         />
       </div>
     </div>

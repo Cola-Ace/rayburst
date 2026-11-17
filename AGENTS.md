@@ -28,7 +28,7 @@ src/
 ├── layouts/                    # Page-level layouts (MainLayout.vue)
 ├── shared/
 │   ├── types.ts                # All TypeScript interfaces (AppConfig, TauriUpdate, etc.)
-│   ├── constants.ts            # DEFAULT_APP_CONFIG, proxy scopes, tracker URLs, timing constants
+│   ├── constants.ts            # DEFAULT_APP_CONFIG, proxy scopes and timing constants
 │   ├── configKeys.ts           # needRestartKeys + re-exports of aria2Options.json lists
 │   ├── aria2Options.json       # SINGLE SOURCE for engine option lists (TS + Rust both consume)
 │   ├── logger.ts               # Structured logging (console + webview bridge)
@@ -38,12 +38,9 @@ src/
 │   └── utils/
 │       ├── configHydration.ts  # Current config defaults, nested merge, and validation
 │       ├── config.ts           # Config key-value transform utilities
-│       ├── tracker.ts          # BT tracker fetching with proxy support
-│       ├── geoip.ts            # GeoIP peer lookup (country code → flag)
 │       ├── fileCategory.ts     # Category editing and native preview requests
 │       ├── format.ts           # Number/date/speed formatting (bytesToSize, localeDateTimeFormat)
-│       ├── task.ts             # Task status helpers (checkTaskIsBT, getTaskName)
-│       ├── peer.ts             # Peer ID parsing and client identification
+│       ├── task.ts             # Task status helpers (getTaskName, getTaskUris)
 │       └── proxy.ts            # Proxy policy, URL building/validation, engine option assembly
 ├── stores/                     # Pinia stores (app.ts, preference.ts, history.ts, task/)
 ├── views/                      # Page-level route views
@@ -56,27 +53,24 @@ src-tauri/
 │   ├── aria2/                  # Native Rust aria2 JSON-RPC client
 │   │   ├── mod.rs              # Module re-exports
 │   │   ├── rpc.rs              # HTTP JSON-RPC transport, authentication and structured errors
-│   │   └── types.rs            # Aria2 response types (Aria2Task, Aria2File, Aria2BtInfo, etc.)
+│   │   └── types.rs            # Aria2 response types (Aria2Task, Aria2File, Aria2Media, etc.)
 │   ├── commands/
 │   │   ├── mod.rs              # Command module re-exports
 │   │   ├── aria2.rs            # aria2 JSON-RPC forwarding (tell_active, global_stat, etc.)
 │   │   ├── autostart.rs        # Start at login (quoted Run value, LaunchAgent, XDG entry)
 │   │   ├── config.rs           # Config CRUD, session, factory reset commands
+│   │   ├── download_preview.rs # Ordinary URL filename and size previews
 │   │   ├── engine.rs           # Engine start/stop/restart commands
 │   │   ├── fs.rs               # File system ops, diagnostics, platform code
-│   │   ├── geoip.rs            # GeoIP database loading and peer IP lookup
 │   │   ├── history.rs          # History DB read/write commands
 │   │   ├── http_api.rs         # Local extension HTTP API auth and status commands
-│   │   ├── remote_file.rs      # Remote torrent download and metainfo inspection
 │   │   ├── notification.rs     # Native notification permission and test commands
 │   │   ├── power.rs            # System power action commands
 │   │   ├── protocol.rs         # Default protocol handler detection and registration
 │   │   ├── proxy.rs            # System proxy detection (PAC, WPAD, env)
 │   │   ├── runtime_config.rs   # RuntimeConfig refresh command
-│   │   ├── tracker.rs          # Tracker probing and protocol classification
 │   │   ├── ui.rs               # Tray, menu, dock, progress bar commands
-│   │   ├── updater.rs          # check_for_update, download_update, apply_update, cancel_update
-│   │   └── upnp.rs             # UPnP port mapping commands
+│   │   └── updater.rs          # check_for_update, download_update, apply_update, cancel_update
 │   ├── engine/
 │   │   ├── mod.rs              # Module re-exports
 │   │   ├── lifecycle.rs        # aria2 sidecar start/stop/restart
@@ -99,10 +93,9 @@ src-tauri/
 │   ├── gpu_guard.rs            # Explicit Linux rendering fallback and native diagnostics
 │   ├── database/               # Single native SQLite owner: history, credentials, receipts
 │   ├── i18n.rs                 # Native locale negotiation and rust-i18n message access
-│   ├── error.rs                # AppError enum (Store, Engine, Io, NotFound, Updater, Upnp)
+│   ├── error.rs                # Structured AppError categories
 │   ├── menu.rs                 # Native menu builder (macOS only, cfg-gated)
-│   ├── tray.rs                 # System tray setup + native event handling (lightweight mode safe)
-│   └── upnp.rs                 # UPnP/IGD port mapping with renewal loop
+│   └── tray.rs                 # System tray setup + native event handling (lightweight mode safe)
 ├── locales/                    # Compile-time embedded native JSON translations
 ├── nsis/
 │   ├── hooks.nsh              # Windows installer hooks (Native Messaging registration + icon refresh)
@@ -413,7 +406,7 @@ Two jobs share no dependency installation. New commits cancel superseded CI runs
 ### Rust
 
 - **Error handling**: All commands return `Result<T, AppError>`, never raw `String` errors
-- **`AppError` enum** in `error.rs` with variants: `Store`, `Engine`, `Io`, `NotFound`, `Updater`, `Upnp`
+- **`AppError` enum** in `error.rs` with structured categories for store, engine, I/O, updater, protocol and database errors
 - **Async commands**: Use `#[tauri::command]` with `async` for I/O operations
 - **Plugin usage**: Tauri plugin traits (e.g., `UpdaterExt`, `StoreExt`) imported in command modules
 
@@ -427,7 +420,7 @@ Two jobs share no dependency installation. New commits cancel superseded CI runs
 
 Rayburst uses a dynamic Material Design 3 color system generated by `@material/material-color-utilities`. `src/shared/utils/colorScheme.ts` is the single source of truth: a preset or custom seed produces the complete light and dark palettes. Primary and tertiary provide theme accents; info, success, warning, and error are harmonized semantic colors. Each role includes color, matching foreground, container, container foreground, hover, and pressed values. Neutral surfaces use the ordered `surface` and `surface-container-*` roles, while text and borders use `on-surface*` and `outline*`.
 
-`src/composables/useColorScheme.ts` is the only bridge to consumers. It maps the generated tokens to CSS variables, Naive UI overrides, and reactive Canvas consumers. Task status colors are aliases of the same roles: active uses primary, waiting uses info, paused uses outline, error uses error, and complete or sharing uses success. `src/styles/tokens.css` contains first-paint fallbacks only; runtime values replace them after startup. Components must consume semantic tokens instead of fixed colors. Fixed colors are limited to platform-defined controls, brand artwork, and color-picker swatches.
+`src/composables/useColorScheme.ts` is the only bridge to consumers. It maps the generated tokens to CSS variables, Naive UI overrides, and reactive Canvas consumers. Task status colors are aliases of the same roles: active uses primary, waiting uses info, paused uses outline, error uses error, and complete uses success. `src/styles/tokens.css` contains first-paint fallbacks only; runtime values replace them after startup. Components must consume semantic tokens instead of fixed colors. Fixed colors are limited to platform-defined controls, brand artwork, and color-picker swatches.
 
 ---
 

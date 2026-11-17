@@ -91,23 +91,10 @@ export function isValidAria2ProxyUrl(url: string): boolean {
   return false
 }
 
-export function isValidBtProxyUrl(url: string): boolean {
-  if (!url.trim()) return true
-  const normalized = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url.trim()) ? url.trim() : `http://${url.trim()}`
-  try {
-    const parsed = new URL(normalized)
-    return ['http:', 'socks4:', 'socks5:', 'socks5h:'].includes(parsed.protocol) && !!parsed.hostname && !!parsed.port
-  } catch {
-    return false
-  }
-}
-
 // ── App-side scoped proxy resolution ────────────────────────────────
 
 export type AppProxyScope = (typeof PROXY_SCOPES)[keyof typeof PROXY_SCOPES]
 
-/** Resolves the proxy URL for an app-side request (updater, tracker sync)
- * when the given scope is enabled; `null` means connect directly. */
 export function resolveAppProxyUrl(proxy: Partial<ProxyConfig> | undefined, scope: AppProxyScope): string | null {
   if (!proxy || !Array.isArray(proxy.scope) || !proxy.scope.includes(scope)) return null
   if (proxy.mode === 'system') return SYSTEM_PROXY
@@ -137,7 +124,7 @@ function clearProxyOptions(): Aria2EngineOptions {
 }
 
 function clearDownloadProxyOptions(): Aria2EngineOptions {
-  return { ...clearProxyOptions(), 'bt-proxy': '' }
+  return clearProxyOptions()
 }
 
 function addProxyCredentials(options: Aria2EngineOptions, username?: string, password?: string): void {
@@ -163,11 +150,7 @@ export function buildDownloadProxyOptions(proxy: ProxyConfig): Aria2EngineOption
     addProxyCredentials(options, proxy.username, proxy.password)
     if (proxy.bypass?.trim()) options['no-proxy'] = proxy.bypass.trim()
   }
-  if (hasProxyScope(proxy, PROXY_SCOPES.BITTORRENT)) {
-    options['bt-proxy'] = buildProxyUrlWithCredentials(proxy) ?? ''
-  }
   if (!hasDownloadScope(proxy)) Object.assign(options, clearProxyOptions())
-  if (!hasProxyScope(proxy, PROXY_SCOPES.BITTORRENT)) options['bt-proxy'] = ''
   return options
 }
 
@@ -208,7 +191,6 @@ export function isManualDownloadProxy(proxy: ProxyConfig): boolean {
   return normalizeProxyMode(proxy.mode) === 'manual' && hasDownloadScope(proxy) && !!proxy.server.trim()
 }
 
-/** The proxy for a request made the way downloads are, such as a remote torrent. */
 export function getDownloadProxy(proxy: ProxyConfig): string | undefined {
   if (normalizeProxyMode(proxy.mode) === 'system' && hasDownloadScope(proxy)) return SYSTEM_PROXY
   return isManualDownloadProxy(proxy) ? proxy.server : undefined

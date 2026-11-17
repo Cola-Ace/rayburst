@@ -3,12 +3,6 @@
  * Restores history records into task models and supports cleanup logic.
  */
 import type { Aria2Task, Aria2File, HistoryRecord, HistoryMeta } from '@shared/types'
-import { isBtMetadataTask } from '@shared/utils/task'
-
-/** Detect magnet tasks that are still resolving BitTorrent metadata. */
-export function isMetadataTask(task: Aria2Task): boolean {
-  return isBtMetadataTask(task)
-}
 
 // ── Centralized history snapshot helpers ────────────────────────────
 // All meta read/write MUST go through these functions. Never JSON.parse
@@ -43,13 +37,6 @@ export function extractHistoryFilePaths(record: HistoryRecord): string[] {
   return []
 }
 
-/** Reconstruct an Aria2Task from a persisted HistoryRecord.
- *
- * Synthesizes the `files[]` and optional `bittorrent` fields so TaskItem can
- * render persisted records through the same paths as live aria2 tasks.
- *
- * Fields not available in the DB (downloadSpeed, connections, etc.) are
- * zero-filled, which is correct for stopped/completed tasks. */
 export function historyRecordToTask(record: HistoryRecord): Aria2Task {
   const dir = record.dir ?? ''
   const totalLength = String(record.total_length ?? 0)
@@ -84,49 +71,12 @@ export function historyRecordToTask(record: HistoryRecord): Aria2Task {
     status: record.status as Aria2Task['status'],
     totalLength,
     completedLength,
-    uploadLength: '0',
     downloadSpeed: '0',
-    uploadSpeed: '0',
     connections: '0',
     dir,
     files,
     errorCode: meta.errorCode,
     errorMessage: meta.errorMessage,
-  }
-
-  // BT tasks get a bittorrent.info stub so getTaskName() resolves correctly
-  if (record.task_type === 'bt') {
-    task.bittorrent = { info: { name: record.name } }
-    if (meta.magnetLink) {
-      task.bittorrent.magnetLink = meta.magnetLink
-    }
-    if (meta.announceList && meta.announceList.length > 0) {
-      task.bittorrent.announceList = meta.announceList.map((tier) => [...tier])
-    }
-    if (meta.sharingTime) {
-      task.bittorrent.finishedTime = meta.sharingTime
-    }
-  }
-
-  if (record.task_type === 'ed2k') {
-    task.ed2k = {
-      name: record.name,
-      length: totalLength,
-    }
-    if (meta.ed2kLink) {
-      task.ed2k.ed2kLink = meta.ed2kLink
-    }
-    if (meta.ed2kHash) {
-      task.ed2k.hash = meta.ed2kHash
-    }
-    if (meta.sharingTime) {
-      task.ed2k.sharingTime = meta.sharingTime
-    }
-  }
-
-  // Restore infoHash from meta — essential for magnet link reconstruction
-  if (meta.infoHash) {
-    task.infoHash = meta.infoHash
   }
 
   return task
@@ -149,5 +99,10 @@ function restoredTask(record: HistoryRecord): Aria2Task {
 /** Merge by task identity; the same content can belong to different downloads. */
 export function mergeHistoryIntoTasks(aria2Tasks: Aria2Task[], historyRecords: HistoryRecord[]): Aria2Task[] {
   const gids = new Set(aria2Tasks.map((task) => task.gid))
-  return [...aria2Tasks, ...historyRecords.filter((record) => !gids.has(record.gid)).map(restoredTask)]
+  return [
+    ...aria2Tasks,
+    ...historyRecords
+      .filter((record) => ['uri', 'media'].includes(record.task_type ?? 'uri') && !gids.has(record.gid))
+      .map(restoredTask),
+  ]
 }

@@ -11,16 +11,8 @@ pub(super) async fn prepare(
     if let Some(name) = options.get("out").and_then(serde_json::Value::as_str) {
         super::validate_filename(name)?;
     }
-    if uris.iter().any(|uri| {
-        uri.trim_start()
-            .to_ascii_lowercase()
-            .starts_with("ed2k://|file|")
-    }) {
-        crate::commands::ed2k::inject_managed_ed2k_bootstrap_options(app, options)?;
-    }
     let database = app.state::<crate::database::DatabaseState>();
     apply_saved_credentials(&database.0, uris, options).await?;
-    crate::services::tasks::bittorrent::prepare(app, uris, options).await?;
     let mut automatic = false;
     if uris
         .iter()

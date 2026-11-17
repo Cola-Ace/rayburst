@@ -49,28 +49,21 @@ and distribute the rebuilt app before the extension. No wildcard origins are all
 The browser host activates its paired desktop installation, independently of URL
 protocol defaults: Windows uses ShellExecuteEx with the sibling executable, macOS
 opens the containing application bundle, and Linux starts the sibling executable.
-AppImage startup copies the host to persistent app data and atomically updates an
-adjacent `rayburst` symlink to the actual AppImage. Moving an AppImage requires one
-manual launch to refresh that link. The host never launches a path supplied by an
-extension or searches for other installations.
+The host never launches a path supplied by an extension or searches for other
+installations. AppImage startup does not copy or register a persistent browser host.
 
-The desktop owns `.torrent`, `magnet`, `ed2k`, `thunder`, and `rayburst` association
-status. The Windows installer registers candidates; runtime queries effective
-associations without changing protected UserChoice values. If verification fails, the user can open Settings
-with an explicit button; macOS uses LaunchServices and Linux uses GIO. Registration alone is
-not proof of the effective default. Development mode does not modify associations
-or browser registrations. Native Messaging permissions remain activation-only.
+The desktop queries `thunder` and `rayburst` association status without changing
+defaults. Installers and runtime do not register URL schemes, default-app candidates
+or Native Messaging hosts. Start Rayburst manually before connecting the extension.
+Native Messaging permissions remain activation-only for externally configured hosts.
 
-Before release, verify cold activation, existing-window activation, tray-only
-activation, file opening, protocol opening, unavailable handlers, another default
-application, and uninstall ownership on installed Windows, macOS and Linux builds.
-Include AppImage relocation and paths containing spaces. An application launch
-response confirms dispatch; the extension still verifies API readiness separately.
+Before release, verify that installation and startup preserve existing defaults and
+browser host registrations on Windows, macOS and Linux. Check extension handoff after
+manually starting the desktop, read-only association queries and uninstall ownership.
 
 ## Platform distribution
 
-Windows installers own Default Apps capabilities in their selected install scope.
-Runtime actions reuse these registrations instead of adding another application.
+Windows installers do not advertise Default Apps capabilities.
 Installer maintenance removes owned or orphaned historical candidates; it never
 rewrites protected UserChoice values or removes another live installation.
 

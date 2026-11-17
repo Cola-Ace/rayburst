@@ -255,15 +255,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         arch = std::env::consts::ARCH;
         "app_started"
     );
-    native_messaging::schedule_repair(app.handle());
-    commands::protocol::repair_activation_protocol(app.handle());
-    #[cfg(windows)]
-    {
-        let handle = app.handle().clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            services::notification::register_app_identity(&handle);
-        });
-    }
     #[cfg(target_os = "macos")]
     {
         let m = menu::build_menu(handle)?;
@@ -288,8 +279,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(std::sync::Arc::new(services::pump::Pump::new()));
     app.manage(services::speed::SpeedSchedulerState::new());
     app.manage(services::aria2_events::Aria2EventState::new());
-    app.manage(services::bt_blocklist::BtPeerBlocklistServiceState::new());
-    app.manage(commands::bt_blocklist::BtPeerBlocklistUpdateState::new());
     app.manage(services::http_api::HttpApiState::new());
     app.manage(services::downloads::Handoffs::default());
     app.manage(commands::DownloadPreviewState::default());
@@ -483,8 +472,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── GeoIP: load bundled DB-IP Country Lite for peer country flags ─
-    let geoip_state = commands::geoip::init_geoip(&app.handle().clone());
-    app.manage(geoip_state);
 
     #[cfg(any(windows, target_os = "linux"))]
     {
@@ -751,14 +738,8 @@ pub fn run() {
             commands::download_update,
             commands::apply_update,
             commands::cancel_update,
-            commands::get_ed2k_bootstrap_status,
-            commands::sync_ed2k_bootstrap_files,
-            commands::get_bt_peer_blocklist_status,
-            commands::sync_bt_peer_blocklist,
-            commands::reconcile_bt_peer_blocklist,
             commands::set_dock_visible,
             commands::minimize_to_tray,
-            commands::fetch_tracker_sources,
             commands::is_autostart_launch,
             commands::gpu_acceleration_unstable,
             commands::start_file_drag,
@@ -768,21 +749,15 @@ pub fn run() {
             commands::check_path_exists,
             commands::check_path_is_dir,
             commands::disk_free_space,
-            commands::read_local_file,
-            commands::list_dir_files,
             commands::show_item_in_dir,
             commands::open_path_normalized,
             commands::delete_path,
             commands::get_engine_conf_path,
             commands::get_association_status,
-            commands::set_default_protocol_client,
-            commands::open_default_apps_settings,
-            commands::fetch_remote_bytes,
             commands::preview_download,
             commands::cancel_download_preview,
             commands::get_system_proxy,
             commands::normalize_proxy_bypass,
-            commands::lookup_peer_ips,
             commands::refresh_runtime_config,
             commands::restart_http_api,
             commands::peek_pending_deep_links_silent,
@@ -819,13 +794,7 @@ pub fn run() {
             commands::tasks_refresh,
             commands::aria2_fetch_active_task_list,
             commands::aria2_fetch_task_item,
-            commands::aria2_fetch_task_item_with_peers,
-            commands::aria2_get_bt_trackers,
             commands::aria2_move_download,
-            commands::aria2_force_bt_recheck,
-            commands::aria2_replace_bt_trackers,
-            commands::aria2_replace_bt_web_seeds,
-            commands::aria2_add_bt_peers,
             commands::aria2_get_version,
             commands::aria2_finish_media,
             commands::aria2_confirm_media,
@@ -835,8 +804,6 @@ pub fn run() {
             commands::aria2_change_global_option,
             commands::aria2_get_option,
             commands::aria2_change_option,
-            commands::aria2_select_bt_files,
-            commands::aria2_defer_bt_selection,
             commands::aria2_get_files,
             commands::aria2_get_redirect_target,
             commands::aria2_add_uri,
@@ -847,17 +814,10 @@ pub fn run() {
             commands::validate_file_categories,
             commands::cancel_download_request,
             commands::preview_site_rules,
-            commands::aria2_add_torrent,
-            commands::aria2_inspect_torrent,
-            commands::aria2_ed2k_search,
-            commands::aria2_get_ed2k_search_results,
-            commands::aria2_cleanup_ed2k_search,
             commands::aria2_force_remove,
             commands::aria2_delete_task,
             commands::task_file_states,
             commands::aria2_batch_delete_tasks,
-            commands::aria2_finish_sharing,
-            commands::aria2_batch_finish_sharing,
             commands::aria2_force_pause,
             commands::aria2_pause,
             commands::aria2_unpause,
@@ -868,7 +828,6 @@ pub fn run() {
             commands::aria2_resume_eligible,
             commands::system_shutdown,
             commands::set_autostart,
-            commands::sync_autostart,
             commands::cancel_shutdown,
             commands::float_window_open_main,
             commands::float_window_ready,

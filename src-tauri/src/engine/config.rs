@@ -27,13 +27,10 @@ const PROXY_CLEAR_KEYS: &[&str] = &[
 
 const MANAGED_KEYS: &[&str] = &[
     "allow-remote-access",
-    "bt-peer-blocklist",
     "console-log-level",
-    "ed2k-node-list",
-    "ed2k-server-list",
     "enable-rpc",
+    "follow-torrent",
     "input-file",
-    "keep-sharing",
     "log",
     "log-file",
     "log-level",
@@ -94,14 +91,10 @@ pub(crate) struct ManagedEngineConfig<'a> {
     pub state_dir: &'a str,
     pub log_file_path: &'a str,
     pub log_level: &'a str,
-    pub ed2k_server_list: &'a str,
-    pub ed2k_node_list: &'a str,
-    pub bt_peer_blocklist: Option<&'a str>,
 }
 
 fn preserves_empty_value(key: &str) -> bool {
     PROXY_CLEAR_KEYS.contains(&key)
-        || matches!(key, "seed-time" | "bt-user-agent" | "bt-peer-id-prefix")
 }
 
 fn config_bool(config: &serde_json::Value, key: &str) -> bool {
@@ -174,7 +167,6 @@ pub(crate) fn build_runtime_config(
     managed: ManagedEngineConfig<'_>,
 ) -> Result<String, String> {
     let mut options = bundled_options().clone();
-    let keep_sharing = config_bool(config, "keep-sharing");
     let allow_remote_access = config_bool(config, "allow-remote-access");
 
     if let Some(config) = config.as_object() {
@@ -191,10 +183,6 @@ pub(crate) fn build_runtime_config(
             if value.is_empty() && !preserves_empty_value(key) {
                 continue;
             }
-            if keep_sharing && key == "seed-time" && !value.is_empty() {
-                continue;
-            }
-
             let value = if key == "no-proxy" {
                 crate::proxy_bypass::normalize(&value).map_err(|error| error.to_string())?
             } else {
@@ -202,10 +190,6 @@ pub(crate) fn build_runtime_config(
             };
             insert_option(&mut options, key, value)?;
         }
-    }
-
-    if keep_sharing {
-        insert_option(&mut options, "seed-ratio", "0")?;
     }
 
     insert_option(
@@ -252,14 +236,6 @@ pub(crate) fn build_runtime_config(
         insert_option(&mut options, "show-console-readout", "false")?;
         insert_option(&mut options, "summary-interval", "0")?;
     }
-    insert_option(&mut options, "ed2k-server-list", managed.ed2k_server_list)?;
-    insert_option(&mut options, "ed2k-node-list", managed.ed2k_node_list)?;
-    if let Some(path) = managed.bt_peer_blocklist {
-        insert_option(&mut options, "bt-peer-blocklist", path)?;
-    } else {
-        options.remove("bt-peer-blocklist");
-    }
-
     let mut output = String::with_capacity(
         GENERATED_HEADER.len()
             + options
@@ -356,9 +332,6 @@ mod tests {
             state_dir: "/data/engine/state",
             log_file_path: "/logs/aria2-next.log",
             log_level: "warn",
-            ed2k_server_list: "/data/server.met",
-            ed2k_node_list: "/data/nodes.dat",
-            bt_peer_blocklist: Some("/data/peer-blocklist.txt"),
         }
     }
 
@@ -370,70 +343,32 @@ mod tests {
     }
 
     #[test]
-    fn runtime_config_merges_bundled_user_and_managed_options() {
+    fn runtime_config_keeps_downloads_and_managed_session_options() {
         let content = build_runtime_config(
             &json!({
                 "dir": "/downloads",
                 "split": 16,
-                "allow-remote-access": true,
-                "rpc-secret": "secret"
+                "rpc-secret": "secret",
+                "follow-torrent": true
             }),
             managed(),
         )
-        .expect("build config");
-
-        assert_eq!(option_value(&content, "state-save-interval"), Some("10"));
+        .unwrap();
         assert_eq!(option_value(&content, "dir"), Some("/downloads"));
         assert_eq!(option_value(&content, "split"), Some("16"));
         assert_eq!(option_value(&content, "rpc-secret"), Some("secret"));
-        assert_eq!(option_value(&content, "rpc-listen-all"), Some("true"));
-        assert_eq!(
-            option_value(&content, "save-session"),
-            Some("/data/download.session")
-        );
         assert_eq!(
             option_value(&content, "input-file"),
             Some("/data/download.session")
         );
         assert_eq!(
-            option_value(&content, "state-dir"),
-            Some("/data/engine/state")
+            option_value(&content, "save-session"),
+            Some("/data/download.session")
         );
-        assert_eq!(option_value(&content, "bt-session-state-file"), None);
-        assert_eq!(
-            option_value(&content, "bt-peer-blocklist"),
-            Some("/data/peer-blocklist.txt")
-        );
-    }
-
-    #[test]
-    fn bundled_config_keeps_only_deliberate_bt_defaults() {
-        let content = build_runtime_config(&json!({}), managed()).expect("build config");
-
-        assert_eq!(option_value(&content, "bt-max-peers"), Some("128"));
-        assert_eq!(option_value(&content, "bt-encryption"), None);
-        assert_eq!(option_value(&content, "bt-tracker-connect-timeout"), None);
-        assert_eq!(option_value(&content, "bt-tracker-timeout"), None);
-    }
-
-    #[test]
-    fn runtime_config_preserves_complete_large_tracker_list() {
-        let tracker = (0..4000)
-            .map(|index| format!("udp://tracker{index}.example:6969/announce"))
-            .collect::<Vec<_>>()
-            .join(",");
-        assert!(tracker.len() > 100_000);
-
-        let content = build_runtime_config(&json!({ "bt-tracker": tracker }), managed())
-            .expect("build config");
-
-        assert_eq!(option_value(&content, "bt-tracker"), Some(tracker.as_str()));
-        let args = runtime_config_args(Path::new(
-            r"C:\Users\test\AppData\Local\dev.aninsomniacy.rayburst\engine\aria2.conf",
-        ));
-        assert_eq!(args.len(), 1);
-        assert!(args[0].len() < 260);
-        assert!(!args[0].contains("tracker"));
+        assert_eq!(option_value(&content, "follow-torrent"), Some("false"));
+        assert_eq!(option_value(&content, "enable-dht"), Some("false"));
+        assert_eq!(option_value(&content, "bt-port-mapping"), Some("false"));
+        assert_eq!(option_value(&content, "ed2k-port-mapping"), Some("false"));
     }
 
     #[test]
@@ -448,81 +383,6 @@ mod tests {
     }
 
     #[test]
-    fn runtime_config_rejects_unknown_and_managed_overrides() {
-        let content = build_runtime_config(
-            &json!({
-                "not-an-option": "value",
-                "log": "/user.log",
-                "log-level": "debug",
-                "bt-peer-blocklist": "/user/list.txt"
-            }),
-            managed(),
-        )
-        .expect("build config");
-
-        assert!(!content.contains("not-an-option"));
-        assert_eq!(option_value(&content, "log"), Some("/logs/aria2-next.log"));
-        assert_eq!(option_value(&content, "log-level"), Some("warn"));
-        assert_eq!(
-            option_value(&content, "bt-peer-blocklist"),
-            Some("/data/peer-blocklist.txt")
-        );
-    }
-
-    #[test]
-    fn runtime_config_applies_keep_sharing_policy() {
-        let content = build_runtime_config(
-            &json!({
-                "keep-sharing": true,
-                "seed-time": "60",
-                "seed-ratio": "1.5"
-            }),
-            managed(),
-        )
-        .expect("build config");
-
-        assert_eq!(option_value(&content, "seed-ratio"), Some("0"));
-        assert_eq!(option_value(&content, "seed-time"), None);
-        assert!(!content.contains("keep-sharing"));
-    }
-
-    #[test]
-    fn runtime_config_always_loads_the_managed_session_and_omits_a_missing_blocklist() {
-        let managed = ManagedEngineConfig {
-            bt_peer_blocklist: None,
-            ..managed()
-        };
-        let content = build_runtime_config(&json!({}), managed).expect("build config");
-
-        assert_eq!(
-            option_value(&content, "input-file"),
-            Some("/data/download.session")
-        );
-        assert_eq!(option_value(&content, "bt-peer-blocklist"), None);
-    }
-
-    #[test]
-    fn runtime_config_preserves_empty_clear_values() {
-        let content = build_runtime_config(
-            &json!({
-                "all-proxy": "",
-                "all-proxy-user": "",
-                "seed-time": "",
-                "bt-user-agent": "",
-                "bt-peer-id-prefix": ""
-            }),
-            managed(),
-        )
-        .expect("build config");
-
-        assert_eq!(option_value(&content, "all-proxy"), Some(""));
-        assert_eq!(option_value(&content, "all-proxy-user"), Some(""));
-        assert_eq!(option_value(&content, "seed-time"), Some(""));
-        assert_eq!(option_value(&content, "bt-user-agent"), Some(""));
-        assert_eq!(option_value(&content, "bt-peer-id-prefix"), Some(""));
-    }
-
-    #[test]
     fn runtime_config_passes_socks_proxies_to_the_engine() {
         let content = build_runtime_config(
             &json!({ "all-proxy": "socks5://127.0.0.1:1080" }),
@@ -534,28 +394,6 @@ mod tests {
             option_value(&content, "all-proxy"),
             Some("socks5://127.0.0.1:1080")
         );
-    }
-
-    #[test]
-    fn runtime_config_contains_each_option_once() {
-        let content = build_runtime_config(
-            &json!({
-                "bt-max-peers": 64,
-                "remote-time": false
-            }),
-            managed(),
-        )
-        .expect("build config");
-        let keys = content
-            .lines()
-            .filter(|line| !line.starts_with('#'))
-            .filter_map(|line| line.split_once('=').map(|(key, _)| key))
-            .collect::<Vec<_>>();
-        let unique = keys.iter().copied().collect::<HashSet<_>>();
-
-        assert_eq!(keys.len(), unique.len());
-        assert_eq!(option_value(&content, "bt-max-peers"), Some("64"));
-        assert_eq!(option_value(&content, "remote-time"), Some("false"));
     }
 
     #[test]

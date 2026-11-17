@@ -44,36 +44,17 @@ pub(crate) fn clear_engine_runtime_state(app: &tauri::AppHandle) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn create_runtime_fixture(data_dir: &Path) {
-        let state_dir = data_dir.join("engine").join(ENGINE_STATE_DIR);
-        std::fs::create_dir_all(state_dir.join("bittorrent").join("torrents")).unwrap();
-        std::fs::create_dir_all(state_dir.join("ed2k")).unwrap();
-        std::fs::write(data_dir.join(DOWNLOAD_SESSION_FILE), "session").unwrap();
-        std::fs::write(state_dir.join("bittorrent").join("session"), "bt-state").unwrap();
-        std::fs::write(
-            state_dir
-                .join("bittorrent")
-                .join("torrents")
-                .join("resume.dat"),
-            "resume",
-        )
-        .unwrap();
-        std::fs::write(state_dir.join("ed2k").join("state.db"), "ed2k-state").unwrap();
-    }
-
     #[test]
-    fn clear_runtime_paths_removes_only_resumable_engine_state() {
-        let temp = tempfile::tempdir().unwrap();
-        create_runtime_fixture(temp.path());
-        std::fs::write(temp.path().join("history.db"), "history").unwrap();
-        std::fs::write(temp.path().join("config.json"), "settings").unwrap();
-        clear_runtime_paths(temp.path()).unwrap();
-
-        for path in engine_runtime_paths(temp.path()) {
-            assert!(!path.exists());
-        }
-        assert!(temp.path().join("history.db").exists());
-        assert!(temp.path().join("config.json").exists());
+    fn reset_removes_runtime_state_and_preserves_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        std::fs::create_dir_all(root.join("engine/state")).unwrap();
+        std::fs::write(root.join("engine/state/task"), "progress").unwrap();
+        std::fs::write(root.join("download.session"), "tasks").unwrap();
+        std::fs::write(root.join("config.json"), "{}").unwrap();
+        clear_runtime_paths(root).unwrap();
+        assert!(!root.join("engine/state").exists());
+        assert!(!root.join("download.session").exists());
+        assert!(root.join("config.json").exists());
     }
 }

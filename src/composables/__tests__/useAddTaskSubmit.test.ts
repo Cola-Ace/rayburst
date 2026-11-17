@@ -25,11 +25,9 @@ import {
   buildEngineOptions,
   classifySubmitError,
   downloadPreviewRequests,
-  submitBatchItems,
   submitManualUris,
   type AddTaskForm,
 } from '../useAddTaskSubmit'
-import type { BatchItem, Aria2EngineOptions } from '@shared/types'
 
 // ── downloadPreviewRequests ─────────────────────────────────────────
 
@@ -381,137 +379,12 @@ describe('classifySubmitError', () => {
 
 // ── submitBatchItems ────────────────────────────────────────────────
 
-describe('submitBatchItems', () => {
-  const mockTaskStore = {
-    addTorrent: vi.fn().mockResolvedValue('gid1'),
-    registerTorrentSource: vi.fn(),
-  } as unknown as ReturnType<typeof import('@/stores/task').useTaskStore>
-
-  const baseOptions: Aria2EngineOptions = { dir: '/dl', split: '16' }
-  const readyTorrent = (overrides: Partial<BatchItem> = {}): BatchItem => ({
-    id: 'torrent-1',
-    kind: 'torrent',
-    source: 'a.torrent',
-    displayName: 'Archive',
-    payload: 'base64',
-    status: 'pending',
-    inspectionState: 'ready',
-    selectedFileIndices: [1, 3],
-    ...overrides,
-  })
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('submits torrent items via addTorrent', async () => {
-    const items = [readyTorrent()]
-
-    await submitBatchItems(items, baseOptions, mockTaskStore)
-
-    expect(mockTaskStore.addTorrent).toHaveBeenCalledWith({
-      torrent: 'base64',
-      options: expect.objectContaining({ dir: '/dl', 'select-file': '1,3' }),
-    })
-    expect(items[0].status).toBe('submitted')
-  })
-
-  it('uses native torrent metadata to select the category directory', async () => {
-    const items = [
-      readyTorrent({
-        selectedFileIndices: [1],
-        torrentMeta: {
-          name: 'movie',
-          mode: 'single',
-          infoHashV1: 'hash',
-          infoHashV2: '',
-          totalLength: '1000',
-          files: [{ index: '1', path: 'movie.mkv', length: '1000' }],
-        },
-      }),
-    ]
-
-    vi.mocked(invoke).mockResolvedValueOnce({ directory: '/dl/Videos' })
-    await submitBatchItems(items, baseOptions, mockTaskStore, {
-      enabled: true,
-      categories: [{ label: 'Videos', extensions: ['mkv'], directory: '/dl/Videos', directoryMode: 'absolute' }],
-    })
-
-    expect(mockTaskStore.addTorrent).toHaveBeenCalledWith({
-      torrent: 'base64',
-      options: { dir: '/dl/Videos', 'select-file': '1' },
-    })
-  })
-
-  it('skips URI items (handled separately)', async () => {
-    const items: BatchItem[] = [
-      {
-        id: 3,
-        kind: 'uri',
-        source: 'http://e.com',
-        payload: 'http://e.com',
-        status: 'pending',
-      } as unknown as BatchItem,
-    ]
-
-    await submitBatchItems(items, baseOptions, mockTaskStore)
-
-    expect(mockTaskStore.addTorrent).not.toHaveBeenCalled()
-  })
-
-  it('removes out option for torrent items', async () => {
-    const items = [readyTorrent({ source: 'c.torrent', payload: 'b64' })]
-    const opts = { ...baseOptions, out: 'custom.zip' }
-
-    await submitBatchItems(items, opts, mockTaskStore)
-
-    const passedOpts = (mockTaskStore.addTorrent as ReturnType<typeof vi.fn>).mock.calls[0][0].options
-    expect(passedOpts.out).toBeUndefined()
-    expect(passedOpts.split).toBeUndefined()
-  })
-
-  it('marks items as failed on error and returns failure count', async () => {
-    ;(mockTaskStore.addTorrent as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('engine down'))
-
-    const items = [readyTorrent({ source: 'e.torrent', payload: 'b64' })]
-
-    const failures = await submitBatchItems(items, baseOptions, mockTaskStore)
-
-    expect(failures).toBe(1)
-    expect(items[0].status).toBe('failed')
-    expect(items[0].error).toBe('engine down')
-  })
-
-  it('stores readable failure text for structured Tauri errors', async () => {
-    ;(mockTaskStore.addTorrent as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
-      Aria2: 'aria2 RPC error [1]: Unsupported URI scheme',
-    })
-
-    const items = [readyTorrent({ source: 'e.torrent', payload: 'b64' })]
-
-    const failures = await submitBatchItems(items, baseOptions, mockTaskStore)
-
-    expect(failures).toBe(1)
-    expect(items[0].error).toBe('Aria2 Next error [1]: Unsupported URI scheme')
-  })
-
-  it('skips already submitted items', async () => {
-    const items = [readyTorrent({ source: 'f.torrent', payload: 'b64', status: 'submitted' })]
-
-    await submitBatchItems(items, baseOptions, mockTaskStore)
-    expect(mockTaskStore.addTorrent).not.toHaveBeenCalled()
-  })
-})
-
 // ── submitManualUris ────────────────────────────────────────────────
 
 describe('submitManualUris', () => {
   const mockTaskStore = {
     addUri: vi.fn().mockResolvedValue(['gid1']),
     addUriAtomic: vi.fn().mockResolvedValue('atomic-gid'),
-    addMagnetUri: vi.fn().mockResolvedValue('magnet-gid'),
-    addTorrent: vi.fn().mockResolvedValue('torrent-gid'),
-    registerTorrentSource: vi.fn(),
   } as unknown as ReturnType<typeof import('@/stores/task').useTaskStore>
 
   const baseForm: AddTaskForm = {
@@ -616,7 +489,6 @@ describe('submitManualUris', () => {
     await submitManualUris({ ...baseForm, uris: 'https://example.com/linux.torrent?token=abc' }, mockTaskStore)
 
     expect(invoke).not.toHaveBeenCalledWith('fetch_remote_bytes', expect.anything())
-    expect(mockTaskStore.addTorrent).not.toHaveBeenCalled()
     expect(mockTaskStore.addUri).toHaveBeenCalledWith({
       uris: ['https://example.com/linux.torrent?token=abc'],
       outs: [''],
@@ -743,37 +615,5 @@ describe('submitManualUris', () => {
     expect(call.outs).toEqual([''])
     expect(call.options['filename-hint']).toBe('report%20.pdf')
     expect(call.options['filename-hint-source']).toBe('browser')
-  })
-
-  it('does not include magnet URIs in regular addUri call (they use separate addMagnetUri path)', async () => {
-    await submitManualUris(
-      { ...baseForm, uris: 'http://example.com/file%20name.zip\nmagnet:?xt=urn:btih:abc123' },
-      mockTaskStore,
-    )
-
-    const call = (mockTaskStore.addUri as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    // Only the regular URI should be in the addUri call
-    expect(call.uris).toEqual(['http://example.com/file%20name.zip'])
-    expect(call.outs).toEqual(['']) // The engine resolves the output name.
-  })
-
-  it('returns structured magnet failures without throwing away successful submissions', async () => {
-    ;(mockTaskStore.addMagnetUri as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce('magnet-gid-1')
-      .mockRejectedValueOnce(new Error('invalid magnet'))
-
-    const result = await submitManualUris(
-      {
-        ...baseForm,
-        uris: 'magnet:?xt=urn:btih:good\nmagnet:?xt=urn:btih:bad',
-      },
-      mockTaskStore,
-    )
-
-    expect(result).toEqual({
-      submittedTaskNames: [],
-      magnetGids: ['magnet-gid-1'],
-      magnetFailures: [{ uri: 'magnet:?xt=urn:btih:bad', error: 'invalid magnet' }],
-    })
   })
 })

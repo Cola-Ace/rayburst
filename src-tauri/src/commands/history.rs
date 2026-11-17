@@ -27,7 +27,7 @@ pub async fn rename_completed_file(
         .iter()
         .find(|task| task.gid == gid)
     {
-        if task.status != "complete" || task.seeder.as_deref() == Some("true") {
+        if task.status != "complete" {
             return Err(AppError::Conflict(
                 "Finish the task before renaming its file".into(),
             ));

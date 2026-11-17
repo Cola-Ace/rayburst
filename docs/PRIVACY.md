@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-09-17
+**Last updated:** 2026-11-17
 
 Rayburst is an open-source desktop download manager licensed under the [MIT License](https://opensource.org/licenses/MIT). This document describes what data the application handles and what network connections it makes.
 
@@ -18,7 +18,7 @@ Application data is stored locally on your device and is not synced by Rayburst:
 | Engine options        | `system.json` (app data directory)           | Aria2 Next runtime configuration            |
 | Download history      | `history.db` (local SQLite database)         | Task records                                |
 | Engine task manifest  | `download.session` (app data directory)      | Restore the task list                       |
-| Engine transfer state | `engine/state` (app data directory)          | Restore protocol progress and sharing state |
+| Engine transfer state | `engine/state` (app data directory)          | Restore transfer progress |
 | Browser captures      | `media-captures/` (app local-data directory) | Store captured media for native processing  |
 | Application logs      | app log directory                            | Diagnostics and troubleshooting             |
 | Download files        | User-specified directory                     | Downloaded content                          |
@@ -42,26 +42,15 @@ Rayburst can make the following automatic network connections. They can be disab
 
 Local and release builds use the configured update endpoint and public signing key. Update checks follow the selected Stable or Beta policy. Beta includes stable releases; neither policy offers a downgrade. If a proxy is configured for app updates, update checks use that proxy.
 
-### 2. BT Tracker List Sync
-
-|                   |                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| **Default**       | Enabled, at most once every 12 hours                                                              |
-| **Contacts**      | Configured community tracker list URLs, such as `cdn.jsdelivr.net` or `raw.githubusercontent.com` |
-| **Purpose**       | Update BitTorrent tracker lists for better peer discovery                                         |
-| **Data sent**     | Standard HTTP GET request (no user data)                                                          |
-| **Data received** | Plain-text tracker URL list                                                                       |
-| **Disable**       | Settings → BitTorrent → uncheck "Auto-update tracker list"                                        |
-
 ## User-Initiated Network Connections
 
-When you add a download task, Rayburst and its Aria2 Next sidecar connect to the servers or peers needed for that task. This can include HTTP, HTTPS, or SFTP servers, BitTorrent trackers, DHT nodes, peers, ED2K servers, and media manifests, segments and key endpoints.
+When you add a download task, Rayburst and its Aria2 Next sidecar connect to the servers needed for that task. This can include HTTP, HTTPS, FTP, or SFTP servers and media manifests, segments and key endpoints.
 
-The engine resolves filenames from the actual download response. The desktop does not issue separate requests just to guess filenames. Torrent file inspection and media manifest inspection may fetch metadata before content selection.
+The engine resolves filenames from the actual download response. The desktop does not issue separate requests just to guess filenames. Media manifest inspection may fetch metadata before content selection.
 
 If you choose a DNS-over-HTTPS resolver, the engine sends the host names of your downloads to that resolver instead of the system resolver.
 
-If UPnP is enabled, the app may contact your local network gateway to map BitTorrent ports. If system proxy detection is used, the app reads operating-system proxy settings locally.
+If system proxy detection is used, the app reads operating-system proxy settings locally.
 
 ## Browser Extension API
 
@@ -79,8 +68,7 @@ The static website uses local assets and stores language and theme preferences i
 
 | Component                                                               | Purpose                    | Network behavior                                                          |
 | ----------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------- |
-| [Aria2 Next](https://github.com/AnInsomniacy/aria2-next)                | Download engine            | Connects to download servers and BitTorrent peers as directed by the user |
-| [DB-IP](https://db-ip.com/)                                             | GeoIP database (CC BY 4.0) | **Offline only** — bundled database, no network requests                  |
+| [Aria2 Next](https://github.com/AnInsomniacy/aria2-next)                | Download engine            | Connects to download servers as directed by the user |
 | [Tauri Updater Plugin](https://github.com/tauri-apps/plugins-workspace) | Auto-update framework      | Used for update checks and update installation                            |
 
 ## Children's Privacy

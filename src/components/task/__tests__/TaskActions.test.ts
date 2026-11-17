@@ -5,7 +5,7 @@
  * - Engine guard: live batch actions block when the engine is unavailable
  * - Refresh loading: duplicate clicks are blocked while native refresh is pending
  * - Confirmation dialogs: all destructive actions require user confirmation
- * - Native batch deletion and P2P sharing termination
+ * - Native batch deletion
  *
  * These are REAL integration tests using @vue/test-utils mount() with Pinia store.
  * All Tauri/Naive UI dependencies are mocked, but component ↔ store interaction is real.
@@ -79,11 +79,6 @@ function translateForTest(key: string, params?: Record<string, unknown>): string
     'task.delete-local-files-permanent-label': 'Permanently delete files',
     'task.purge-record': 'Clear History Records',
     'task.purge-record-confirm': 'This will remove all completed, failed, or removed task records.',
-    'task.finish-all-sharing': 'Stop All Sharing',
-    'task.finish-all-sharing-confirm': `Stop ${params?.count ?? '{count}'} seeding or sharing task(s)? Downloaded files and completed records will be kept.`,
-    'task.finish-all-sharing-success': `Stopped ${params?.count ?? '{count}'} seeding or sharing task(s)`,
-    'task.finish-all-sharing-partial': `Stopped ${params?.finished ?? '{finished}'} task(s); ${params?.failed ?? '{failed}'} failed`,
-    'task.finish-all-sharing-fail': 'Failed to stop seeding or sharing tasks',
     'task.batch-delete-task-partial': `Removed ${params?.removed ?? '{removed}'} task(s); ${params?.failed ?? '{failed}'} failed`,
   }
   return messages[key] ?? key
@@ -189,7 +184,6 @@ describe('TaskActions', () => {
     taskStore.fetchList = mockFetchList
     taskStore.resumeAllTask = mockResumeAllTask
     taskStore.pauseAllTask = mockPauseAllTask
-    taskStore.finishSharingTasks = mockFinishSharingTasks
     taskStore.purgeTaskRecord = mockPurgeTaskRecord
     taskStore.batchRemoveTask = mockBatchRemoveTask
     mockFinishSharingTasks.mockImplementation(async (gids: string[]) => ({ succeeded: gids, failed: [] }))
@@ -203,7 +197,7 @@ describe('TaskActions', () => {
   it('exposes progress operations through the batch menu', () => {
     const wrapper = createWrapper()
     const buttons = actionButtons(wrapper)
-    expect(buttons.length).toBe(7)
+    expect(buttons.length).toBe(6)
   })
 
   it('renders the destination scope before the store catches up', async () => {
@@ -382,18 +376,6 @@ describe('TaskActions', () => {
       expect(pauseBtn.attributes('disabled')).toBeUndefined()
     })
 
-    it('Resume All button remains disabled with completed/error/sharing tasks', () => {
-      const taskStore = useTaskStore()
-      taskStore.taskList = [
-        { gid: 'c1', status: 'complete' },
-        { gid: 'e1', status: 'error' },
-        { gid: 's1', status: 'active', bittorrent: { info: { name: 'x' } }, seeder: 'true' },
-      ] as never
-      const wrapper = createWrapper()
-      const resumeBtn = actionButtons(wrapper)[3]
-      expect(resumeBtn.attributes('disabled')).toBeDefined()
-    })
-
     it('disabled Resume All does not open a dialog when clicked', async () => {
       // Empty task list → Resume All should be disabled
       const wrapper = createWrapper()
@@ -406,16 +388,6 @@ describe('TaskActions', () => {
       const wrapper = createWrapper()
       await clickButton(wrapper, 4) // Pause All
       expect(mockDialogWarning).not.toHaveBeenCalled()
-    })
-
-    it('Stop All Sharing is enabled only for live P2P sharing tasks', () => {
-      const taskStore = useTaskStore()
-      taskStore.taskList = [
-        { gid: 'download', status: 'active', seeder: 'false' },
-        { gid: 'bt', status: 'paused', seeder: 'true', bittorrent: { info: { name: 'x' } } },
-      ] as never
-      const wrapper = createWrapper()
-      expect(actionButtons(wrapper)[5].attributes('disabled')).toBeUndefined()
     })
   })
 
@@ -534,25 +506,6 @@ describe('TaskActions', () => {
 
       expect(mockPurgeTaskRecord).toHaveBeenCalledOnce()
     })
-
-    it('stops active and paused BT and ED2K sharing tasks after confirmation', async () => {
-      const taskStore = useTaskStore()
-      taskStore.taskList = [
-        { gid: 'bt', status: 'active', seeder: 'true', bittorrent: { info: { name: 'bt' } } },
-        { gid: 'ed2k', status: 'paused', seeder: 'true', ed2k: { name: 'ed2k' } },
-        { gid: 'download', status: 'active', seeder: 'false' },
-      ] as never
-      const wrapper = createWrapper()
-
-      await clickButton(wrapper, 5)
-      expect(lastDialogOptions?.title).toBe('Stop All Sharing')
-      expect(renderDialogText(lastDialogOptions?.content)).toContain('Stop 2 seeding or sharing task(s)')
-      const onPositiveClick = lastDialogOptions!.onPositiveClick as () => Promise<false>
-      await onPositiveClick()
-
-      expect(mockFinishSharingTasks).toHaveBeenCalledWith(['bt', 'ed2k'])
-      expect(mockMessageSuccess).toHaveBeenCalledWith('Stopped 2 seeding or sharing task(s)')
-    })
   })
 
   // ── Delete All ──────────────────────────────────────────────────
@@ -561,7 +514,7 @@ describe('TaskActions', () => {
     it('does nothing when task list is empty', async () => {
       const wrapper = createWrapper()
       // taskList is empty by default — the delete-all button should be disabled
-      const deleteBtn = actionButtons(wrapper)[6]
+      const deleteBtn = actionButtons(wrapper)[5]
       expect(deleteBtn.attributes('disabled')).toBeDefined()
     })
 
@@ -570,7 +523,7 @@ describe('TaskActions', () => {
       taskStore.taskList = [{ gid: 'g1' }, { gid: 'g2' }] as never
 
       const wrapper = createWrapper()
-      await clickButton(wrapper, 6) // Delete All
+      await clickButton(wrapper, 5) // Delete All
 
       expect(mockDialogWarning).toHaveBeenCalledOnce()
       expect(lastDialogOptions?.title).toBe('Clear Download Queue')
@@ -587,7 +540,7 @@ describe('TaskActions', () => {
       taskStore.taskList = [{ gid: 'g1' }] as never
 
       const wrapper = createWrapper()
-      await clickButton(wrapper, 6)
+      await clickButton(wrapper, 5)
 
       expect(renderDialogText(lastDialogOptions?.content)).toContain('Permanently delete files')
     })
@@ -597,7 +550,7 @@ describe('TaskActions', () => {
       taskStore.taskList = [{ gid: 'g1' }, { gid: 'g2' }, { gid: 'g3' }] as never
 
       const wrapper = createWrapper()
-      await clickButton(wrapper, 6) // Delete All
+      await clickButton(wrapper, 5) // Delete All
 
       const onPositiveClick = lastDialogOptions!.onPositiveClick as () => Promise<false>
       await onPositiveClick()
@@ -610,7 +563,7 @@ describe('TaskActions', () => {
       taskStore.taskList = [{ gid: 'g1' }] as never
 
       const wrapper = createWrapper()
-      await clickButton(wrapper, 6)
+      await clickButton(wrapper, 5)
 
       const onPositiveClick = lastDialogOptions!.onPositiveClick as () => Promise<false>
       await onPositiveClick()

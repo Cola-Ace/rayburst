@@ -10,9 +10,9 @@ function makeTask(gid: string, overrides: Partial<Aria2Task> = {}): Aria2Task {
     status: 'active',
     totalLength: '100',
     completedLength: '10',
-    uploadLength: '0',
+
     downloadSpeed: '5',
-    uploadSpeed: '0',
+
     connections: '1',
     dir: '/downloads',
     files: [

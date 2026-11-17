@@ -15,7 +15,7 @@ workspace. No shared runtime package or cross-repository test harness is require
 
 `aria2/rpc.rs` owns HTTP JSON-RPC framing, authentication and structured errors.
 `services/tasks/` owns task queries, controls and visibility policy.
-`services/downloads/` owns ordinary submission, including manual URI/torrent
+`services/downloads/` owns ordinary submission, including manual URI
 creation. `services/media/` owns media inspection and selection. Policy does not
 belong in the RPC transport. OS deep-link parsing still feeds the desktop dialog;
 browser HTTP submissions run in Rust without requiring a mounted WebView.
@@ -35,8 +35,8 @@ browser's; no read creates a task.
 
 Completed, inactive single files can be renamed from task details. Native exclusive
 rename preserves existing destination files. A SQLite intent records filesystem work
-before it starts and reconciles an interrupted history update at startup. Active and
-seeding tasks retain engine ownership and cannot be renamed through this operation.
+before it starts and reconciles an interrupted history update at startup. Active
+tasks retain engine ownership and cannot be renamed through this operation.
 
 For a new ordinary HTTP task, the engine applies this precedence:
 
@@ -48,7 +48,6 @@ For a new ordinary HTTP task, the engine applies this precedence:
 Hints are decoded text, not paths. The engine applies its path rules. URL components
 are decoded once; literal percent sequences in names, passwords and restored paths
 remain literal. The desktop makes no separate HEAD/GET request to guess a name.
-Remote torrent metainfo inspection remains a real download, not a naming probe.
 
 For media, `filename-hint-source=title` preserves dots in a page title and appends
 the selected container extension. Filename hints and explicit `out` values have
@@ -60,7 +59,7 @@ for browser submissions and frontend previews/submissions. Rules declare a
 (a fixed directory). Built-in rules store relative subdirectories. An explicit
 per-task directory bypasses classification. File sets must resolve to one directory;
 mixed or unclassified content keeps its base directory. Classification uses the
-available URL, filename hint or torrent metadata, without a separate naming request.
+available URL or filename hint, without a separate naming request.
 Completed files are never moved by the WebView, and native output paths remain
 authoritative. Rules without the current directory mode must be configured again.
 
@@ -97,7 +96,7 @@ Optional fields are `finalUrl`, `referer`, `cookie`, `userAgent`, `filename`,
 `filenameSource` (`browser` or `suggested`, default `suggested`), `requestHeaders`
 (`{name,value}` pairs) and, for downloads the browser holds, `verify` with the MIME
 type and size the browser received, and `ack` (`final`, the default, or `early`).
-Supported inputs are HTTP(S), SFTP, magnet, ED2K and Thunder.
+Supported inputs are HTTP(S), FTP, SFTP and Thunder.
 
 The browser keeps holding its download until the answer, and only the answer
 decides who downloads it:
@@ -115,7 +114,7 @@ With `verify`, the engine requests the first byte of the URL with the browser's
 request context (`aria2.probe`) before anything is created; a check that takes
 longer than 8 s answers `unreachable`. Chromium names a held download after 15 s
 whatever the extension does, so the answer has to come before. With the confirm
-behavior, or for `.torrent` links, `ack: "early"` is answered `accepted` once the
+behavior, `ack: "early"` is answered `accepted` once the
 add dialog shows the download: the dialog has no time limit, several downloads can
 gather in it, and closing it discards them, as in other download managers. With
 `ack: "final"` the request stays open while the dialog shows the download; closing
@@ -134,7 +133,7 @@ the extension popup.
 ## Native storage and recovery
 
 `database/` is the single connection owner for `history.db`: history, birth records,
-HTTP credentials, rename journal and BitTorrent selections. `schema.sql` defines the current
+HTTP credentials and rename journal. `schema.sql` defines the current
 schema; `PRAGMA user_version` records it. Initialization runs from Rust startup.
 Frontend stores expose named IPC operations and never execute SQL. Media
 operations live in memory; their hidden engine task is the durable part.
@@ -168,17 +167,8 @@ task's save directory, deepest first. Download roots, category directories, shar
 paths and nonempty directories remain. Cleanup does not traverse directory links;
 permission failures retain the task record so cleanup can be retried.
 
-Magnet selection policy is applied at native submission for every entry point.
-SQLite retains the task's policy and Choose Later intent; the engine owns metadata
-and selection readiness. Snapshots restore pending prompts after window recreation,
-and the native monitor handles download-all classification without a WebView.
-File selection and resume share the task mutation boundary and preserve a saved
-selection when resume fails. User pause actions suspend automatic selection.
-
 `services/tasks/files.rs` watches selected completed files through `notify` and
-checks them periodically when native filesystem events are unavailable. Missing or
-inaccessible seeding files pause sharing even without a WebView; resuming an affected
-BitTorrent task requests libtorrent's recheck. Cards consume one shared availability
+checks them periodically when native filesystem events are unavailable. Cards consume one shared availability
 stream. A double-click opens completed content and ignores controls, drag handles
 and selected text.
 
@@ -195,7 +185,7 @@ Site rules cap `max-connection-per-server` for matching hosts there: a plain
 pattern names a domain and its subdomains, `*` matches any characters, and the
 lowest matching limit wins over a larger requested value. The dialog's speed
 limit and checksum become `max-download-limit` and `checksum`; a checksum names
-one file, so it applies to a single non-magnet URI, and a mismatch fails the task.
+one file, so it applies to a single URI, and a mismatch fails the task.
 
 Before submitting, the dialog asks the desktop for duplicates: live tasks with the
 same source URI (ignoring fragments) and completed history records whose file still
@@ -222,24 +212,20 @@ accepted them. If it fails to open, its inputs wait for the next request.
 
 The floating window (`services/float_window.rs`, preference `floatWindow`)
 keeps the overall speed and progress on top of other windows. Its mode shows it
-always, only while files download (not while paused or seeding), or never; the
+always, only while files download (not while paused), or never; the
 settings, the orb's menu and the tray menu switch it. The pump opens and
 closes it with the mode and sends it each snapshot's queue; while downloading
 only, it lingers a moment after the last download to show its check. The orb
 fills from the bottom with the overall progress, under the received speed
-while downloading and the sent speed while only seeding; otherwise its sign
+while downloading; otherwise its sign
 tells what the queue waits for: servers, its turn or the user. The Rayburst
 mark rests in it, and only a download of unknown size moves its fill. It can
 be dragged anywhere. A click opens a panel centered beside it, a window of its
 own built hidden with the orb, to pause or resume each download; dragging the
-panel's header takes the orb along. Links and torrent files dropped on the orb
-open in the add window; the orb reads dropped files itself, since its page
-receives no paths.
+panel's header takes the orb along. Links dropped on the orb open in the add window.
 
-Turning BitTorrent off (`bittorrentEnabled`) makes `submit` refuse magnet URIs
-and torrents from every entry point. Independently, the engine runs with
-`follow-torrent=false`: a `.torrent` fetched over HTTP is saved as a file and
-never starts its content.
+Submissions accept only supported download protocols. Metainfo fetched over HTTP
+is saved as an ordinary file.
 
 When a task completes, the optional post-download program runs detached with the
 configured arguments. Arguments split at unquoted whitespace, double quotes group,
@@ -293,10 +279,9 @@ transports cookies. Downloads use the authenticated HTTP handoff.
 
 ## Activation and installation
 
-The application repairs its own `rayburst` activation scheme at startup on Windows
-and Linux. Public download schemes remain explicit user choices. Windows queries
-the effective Shell association instead of inferring it from an application registry
-key. Protocol state is included in the Windows diagnostic export.
+Installation and startup do not register URL handlers, default-app candidates or
+browser Native Messaging hosts. Protocol settings and diagnostics only query existing
+associations. Start the desktop manually before submitting downloads from the extension.
 
 All native wake requests use one serialized background window creation path.
 WebView readiness controls delivery of pending UI actions; creating a window never
@@ -310,6 +295,11 @@ full process paths, stops this installation's supervisor before
 its sidecars, and waits for native process handles to signal exit. It does not kill
 other installations by executable name. Normal application exit still saves the
 session through the existing supervisor.
+
+Before restoring the queue, the desktop retains only HTTP, HTTPS, FTP, SFTP and
+supported Thunder downloads. When it excludes unsupported entries, it keeps the
+original queue in a `download-session-*.bak` file beside `download.session`.
+Downloaded metadata files are saved as ordinary files.
 
 Proxy bypass entries are validated and normalized once in Rust for runtime config,
 global option updates and task options. libcurl performs host/IP/CIDR matching.
@@ -328,12 +318,10 @@ a confirmation finalizes every owned request ID, including URLs removed from the
 
 ## Platform integration
 
-Windows installation registers the private `rayburst` scheme and advertises public
-protocol/file candidates. It does not select defaults for magnet, ED2K, thunder or
-torrent files. Existing user choices remain theirs; public defaults use OS settings.
-The native messaging launcher starts the paired executable outside the browser's
-Windows job with closed standard streams. macOS uses LaunchServices; Linux keeps a
-separate process group. Development builds do not register installed-app identities.
+The bundled Native Messaging launcher can activate its paired executable when a host
+has been configured externally. The desktop and installer do not register it.
+Startup does not rewrite login items or register a Windows notification identity;
+login registration changes only when the user saves that setting.
 
 Windows are transparent and the page draws what it shows; Windows 11 and macOS add
 the main window's corners and shadow. Linux uses a native StatusNotifierItem tray with

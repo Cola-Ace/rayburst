@@ -9,9 +9,9 @@ function task(overrides: Partial<Aria2Task> = {}): Aria2Task {
     status: 'active',
     totalLength: '1000',
     completedLength: '500',
-    uploadLength: '0',
+
     downloadSpeed: '0',
-    uploadSpeed: '0',
+
     connections: '1',
     dir: '/tmp',
     files: [],
@@ -23,7 +23,7 @@ function snapshot(tasks: Aria2Task[], speeds: { down?: number; up?: number } = {
   const update: FloatUpdate = {
     stat: {
       downloadSpeed: speeds.down ?? 0,
-      uploadSpeed: speeds.up ?? 0,
+
       numActive: tasks.filter((t) => t.status === 'active').length,
     },
     progress,
@@ -54,21 +54,8 @@ describe('floatOrbState', () => {
     })
   })
 
-  it('shows a torrent that only shares as seeding, not as a download of unknown size', () => {
-    const seeder = task({ seeder: 'true', completedLength: '1000' })
-    expect(floatOrbState(snapshot([seeder], { up: 512 }), false)).toEqual({
-      kind: 'seeding',
-      speed: 512,
-      progress: 100,
-      count: 1,
-    })
-    // Downloads come first while both run.
-    expect(floatOrbState(snapshot([task({ gid: '2' }), seeder], { down: 1, up: 512 }), false).kind).toBe('downloading')
-  })
-
   it('holds the check after the last download until a new one starts', () => {
     expect(floatOrbState(snapshot([]), true).kind).toBe('done')
-    expect(floatOrbState(snapshot([task({ seeder: 'true' })], { up: 1 }), true).kind).toBe('done')
     expect(floatOrbState(snapshot([task()], { down: 1 }), true).kind).toBe('downloading')
   })
 
@@ -86,9 +73,5 @@ describe('floatOrbState', () => {
   it('leaves the line of a paused queue empty while a size is unknown', () => {
     const state = floatOrbState(snapshot([task({ status: 'paused', totalLength: '0' })]), false)
     expect(state).toMatchObject({ kind: 'paused', progress: null })
-  })
-
-  it('ignores paused seeding: nothing is left to download', () => {
-    expect(floatOrbState(snapshot([task({ status: 'paused', seeder: 'true' })]), false).kind).toBe('idle')
   })
 })

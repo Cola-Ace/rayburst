@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   createBatchItem,
-  detectExternalInputKind,
-  detectKind,
-  extractMagnetDisplayName,
   mergeRawUriLines,
   normalizeUriLines,
   decodePathSegment,
@@ -21,12 +18,12 @@ describe('normalizeUriLines', () => {
     expect(
       normalizeUriLines(`
         https://a.example/file
-        magnet:?xt=urn:btih:abc
+        https://b.example/file.zip
 
         https://a.example/file
         thunder://foo
       `),
-    ).toEqual(['https://a.example/file', 'magnet:?xt=urn:btih:abc', 'thunder://foo'])
+    ).toEqual(['https://a.example/file', 'https://b.example/file.zip', 'thunder://foo'])
   })
 
   it('handles multiline payload text exactly like a textarea source', () => {
@@ -34,37 +31,6 @@ describe('normalizeUriLines', () => {
       'https://a.example/file',
       'https://b.example/file',
     ])
-  })
-
-  // ── Bare info hash normalization ────────────────────────────────────
-
-  it('converts a bare SHA-1 hex hash (40 chars) to a magnet URI', () => {
-    const hash = 'd8988e034cb5de79d319242e3365bf30a7741a6e'
-    expect(normalizeUriLines(hash)).toEqual([`magnet:?xt=urn:btih:${hash}`])
-  })
-
-  it('converts an uppercase SHA-1 hex hash (40 chars) to a magnet URI', () => {
-    const hash = 'D8988E034CB5DE79D319242E3365BF30A7741A6E'
-    expect(normalizeUriLines(hash)).toEqual([`magnet:?xt=urn:btih:${hash}`])
-  })
-
-  it('converts a bare Base32 hash (32 chars) to a magnet URI', () => {
-    const hash = 'TCIY4A2MWXPHTUYZEQUOMNS7GCDXOQTG'
-    expect(normalizeUriLines(hash)).toEqual([`magnet:?xt=urn:btih:${hash}`])
-  })
-
-  it('normalizes bare hashes mixed with regular URIs', () => {
-    const hash = 'aabbccddee00112233445566778899aabbccddee'
-    expect(normalizeUriLines(`https://example.com/file.zip\n${hash}\nmagnet:?xt=urn:btih:existing`)).toEqual([
-      'https://example.com/file.zip',
-      `magnet:?xt=urn:btih:${hash}`,
-      'magnet:?xt=urn:btih:existing',
-    ])
-  })
-
-  it('deduplicates identical bare hashes', () => {
-    const hash = 'd8988e034cb5de79d319242e3365bf30a7741a6e'
-    expect(normalizeUriLines(`${hash}\n${hash}`)).toEqual([`magnet:?xt=urn:btih:${hash}`])
   })
 
   it('does NOT convert strings of wrong length (39 chars)', () => {
@@ -75,16 +41,6 @@ describe('normalizeUriLines', () => {
   it('does NOT convert strings of wrong length (41 chars)', () => {
     const long = 'd8988e034cb5de79d319242e3365bf30a7741a6ef'
     expect(normalizeUriLines(long)).toEqual([long])
-  })
-
-  it('converts a bare BitTorrent v2 hash', () => {
-    const sha256 = 'aabbccddee00112233445566778899aabbccddee00112233445566778899aabb'
-    expect(normalizeUriLines(sha256)).toEqual([`magnet:?xt=urn:btmh:1220${sha256}`])
-  })
-
-  it('does not touch already-prefixed magnet URIs', () => {
-    const full = 'magnet:?xt=urn:btih:d8988e034cb5de79d319242e3365bf30a7741a6e'
-    expect(normalizeUriLines(full)).toEqual([full])
   })
 
   it('keeps Thunder links wrapped for engine parsing', () => {
@@ -210,123 +166,15 @@ describe('mergeRawUriLines', () => {
 
     expect(mergeRawUriLines('', [` ${thunder} \n\n${thunder}`])).toBe(thunder)
   })
-
-  it('normalizes bare info hashes for display parity with manual URI input', () => {
-    const hash = 'd8988e034cb5de79d319242e3365bf30a7741a6e'
-
-    expect(mergeRawUriLines('', [hash])).toBe(`magnet:?xt=urn:btih:${hash}`)
-  })
 })
 
 // ── detectKind ────────────────────────────────────────────────────────
 // Scheme-first → remote URI download → local path suffix → fallback.
 
-describe('detectKind', () => {
-  // ── 1. Scheme-first: magnet / thunder ──────────────────────────────
-
-  it('classifies plain magnet URIs as uri', () => {
-    expect(detectKind('magnet:?xt=urn:btih:abc123')).toBe('uri')
-  })
-
-  it('classifies magnet URIs with tracker.torrent.eu.org as uri (regression)', () => {
-    const magnet =
-      'magnet:?xt=urn:btih:a09e89b13c5347a2e3414aaa6556c950bf9a6277' +
-      '&dn=test&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce'
-    expect(detectKind(magnet)).toBe('uri')
-  })
-
-  it('classifies thunder:// links as uri', () => {
-    expect(detectKind('thunder://QUFodHRwOi8vZXhhbXBsZS5jb20vZmlsZS56aXBaWg==')).toBe('uri')
-  })
-
-  it('classifies ED2K file links as uri', () => {
-    expect(detectKind('ed2k://|file|Ubuntu%2026.04.iso|123456789|0123456789abcdef0123456789abcdef|/')).toBe('uri')
-  })
-
-  // ── 2. Remote URLs: pathname-only extension match ──────────────────
-
-  it('classifies remote .torrent URLs as uri for manual downloads', () => {
-    expect(detectKind('https://example.com/files/download.torrent')).toBe('uri')
-  })
-
-  it('classifies remote .torrent URLs with query params as uri for manual downloads', () => {
-    expect(detectKind('https://example.com/file.torrent?token=abc&v=2')).toBe('uri')
-  })
-
-  it('classifies remote URLs with .torrent in hostname but not pathname as uri', () => {
-    expect(detectKind('https://tracker.torrent.eu.org/announce')).toBe('uri')
-  })
-
-  it('classifies remote URLs with .torrent in query but not pathname as uri', () => {
-    expect(detectKind('https://example.com/download?file=a.torrent')).toBe('uri')
-  })
-
-  it('classifies plain HTTP URLs as uri', () => {
-    expect(detectKind('https://example.com/file.zip')).toBe('uri')
-  })
-
-  it('classifies SFTP URLs with .torrent as uri', () => {
-    expect(detectKind('sftp://mirror.example.com/pub/file.torrent')).toBe('uri')
-  })
-
-  // ── 3. Local file paths ───────────────────────────────────────────
-
-  it('classifies local .torrent paths as torrent', () => {
-    expect(detectKind('/Users/me/Downloads/ubuntu.torrent')).toBe('torrent')
-  })
-
-  it('classifies external remote .torrent URLs as torrent', () => {
-    expect(detectExternalInputKind('https://example.com/files/download.torrent')).toBe('torrent')
-    expect(detectExternalInputKind('https://example.com/file.torrent?token=abc&v=2')).toBe('torrent')
-  })
-
-  // ── 4. Fallback ───────────────────────────────────────────────────
-
-  it('classifies unknown URIs as uri', () => {
-    expect(detectKind('ed2k://|file|example|123|abc|/')).toBe('uri')
-  })
-})
-
-// ── extractMagnetDisplayName ────────────────────────────────────────
-
-describe('extractMagnetDisplayName', () => {
-  it('extracts dn from a standard magnet URI', () => {
-    const uri = 'magnet:?xt=urn:btih:abc123&dn=Ubuntu+24.04+LTS'
-    expect(extractMagnetDisplayName(uri)).toBe('Ubuntu 24.04 LTS')
-  })
-
-  it('decodes percent-encoded UTF-8 dn values', () => {
-    const uri = 'magnet:?xt=urn:btih:abc&dn=caf%C3%A9'
-    expect(extractMagnetDisplayName(uri)).toBe('café')
-  })
-
-  it('returns empty string when dn is absent', () => {
-    expect(extractMagnetDisplayName('magnet:?xt=urn:btih:abc123')).toBe('')
-  })
-
-  it('returns empty string for non-magnet URIs', () => {
-    expect(extractMagnetDisplayName('https://example.com?dn=test')).toBe('')
-  })
-
-  it('returns empty string for bare magnet: without query', () => {
-    expect(extractMagnetDisplayName('magnet:')).toBe('')
-  })
-
-  it('handles dn with special characters', () => {
-    const uri = 'magnet:?xt=urn:btih:abc&dn=File%20%26%20Folder%20(2024)'
-    expect(extractMagnetDisplayName(uri)).toBe('File & Folder (2024)')
-  })
-
-  it('handles dn with tracker params after it', () => {
-    const uri = 'magnet:?xt=urn:btih:abc&dn=Test+Name&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451'
-    expect(extractMagnetDisplayName(uri)).toBe('Test Name')
-  })
-})
-
 describe('createBatchItem', () => {
   it('uses source as payload for uri items', () => {
-    const item = createBatchItem('uri', 'magnet:?xt=urn:btih:abc')
-    expect(item.payload).toBe('magnet:?xt=urn:btih:abc')
+    const item = createBatchItem('uri', 'https://b.example/file.zip')
+    expect(item.payload).toBe('https://b.example/file.zip')
   })
 
   it('assigns distinct IDs to separate items', () => {
@@ -402,22 +250,6 @@ describe('extractDecodedFilename', () => {
 
   it('returns empty string for bare domain URIs', () => {
     expect(extractDecodedFilename('http://example.com')).toBe('')
-  })
-
-  it('returns empty string for magnet URIs', () => {
-    expect(extractDecodedFilename('magnet:?xt=urn:btih:abc123')).toBe('')
-  })
-
-  it('extracts the display filename from ED2K file links', () => {
-    expect(
-      extractDecodedFilename('ed2k://|file|Ubuntu%2026.04%20LTS.iso|123456789|0123456789abcdef0123456789abcdef|/'),
-    ).toBe('Ubuntu 26.04 LTS.iso')
-  })
-
-  it('sanitizes unsafe characters in ED2K filenames', () => {
-    expect(extractDecodedFilename('ed2k://|file|bad%2Fname%3F.iso|123|0123456789abcdef0123456789abcdef|/')).toBe(
-      'bad_name_.iso',
-    )
   })
 
   it('returns empty string for data URIs', () => {

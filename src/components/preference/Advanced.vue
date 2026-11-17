@@ -70,10 +70,6 @@ const extensionDownloadBehaviorOptions = computed(() => [
   { value: 'background', label: t('preferences.extension-behavior-background') },
   { value: 'show', label: t('preferences.extension-behavior-show') },
 ])
-const extensionTorrentActionOptions = computed(() => [
-  { value: 'open', label: t('preferences.extension-torrent-open') },
-  { value: 'save', label: t('preferences.extension-torrent-save') },
-])
 
 const aria2ConfPath = ref('')
 const engineStatePath = ref('')
@@ -332,19 +328,6 @@ onMounted(async () => {
           <NSelect
             v-model:value="form.extensionDownloadBehavior"
             :options="extensionDownloadBehaviorOptions"
-            class="pref-control-auto"
-          />
-        </NFormItem>
-        <NFormItem>
-          <template #label>
-            <PreferenceHintLabel
-              :label="t('preferences.extension-torrent-action')"
-              :hint="t('preferences.extension-torrent-action-hint')"
-            />
-          </template>
-          <NSelect
-            v-model:value="form.extensionTorrentAction"
-            :options="extensionTorrentActionOptions"
             class="pref-control-auto"
           />
         </NFormItem>

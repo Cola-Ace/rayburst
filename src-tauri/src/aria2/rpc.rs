@@ -79,17 +79,6 @@ impl RpcClient {
             // aria2 carries native RPC errors in HTTP 400/404/500 responses.
             // Decode that envelope before treating the HTTP status as transport failure.
             if let Some(error) = body.error {
-                if let Some(kind @ ("invalidBase64" | "torrentTooLarge" | "invalidTorrent")) = error
-                    .data
-                    .as_ref()
-                    .and_then(|value| value.get("kind"))
-                    .and_then(Value::as_str)
-                {
-                    return Err(AppError::TorrentInspection {
-                        kind: kind.into(),
-                        message: error.message,
-                    });
-                }
                 return Err(AppError::Rpc {
                     code: error.code,
                     message: error.message,

@@ -1,16 +1,9 @@
-/** @fileoverview Tests for task metadata utilities: progress, naming, BT detection, magnet links. */
+/** @fileoverview Tests for task metadata utilities: progress, naming, source links. */
 import { describe, it, expect, vi } from 'vitest'
 import {
   calcProgress,
   getTaskCompletedLength,
   getTaskName,
-  isBtMetadataTask,
-  checkTaskIsBT,
-  checkTaskIsEd2kSearch,
-  checkTaskIsSharing,
-  getTaskSharingKind,
-  getTaskSharingState,
-  getTaskSharingTime,
   getFileNameFromFile,
   getTaskUri,
   resolveOpenTarget,
@@ -30,9 +23,9 @@ function createMockTask(overrides: Partial<Aria2Task> = {}): Aria2Task {
     status: 'active',
     totalLength: '1000',
     completedLength: '500',
-    uploadLength: '0',
+
     downloadSpeed: '100',
-    uploadSpeed: '0',
+
     connections: '1',
     dir: '/tmp',
     files: [],
@@ -83,13 +76,12 @@ describe('getTaskCompletedLength', () => {
       status: 'paused',
       totalLength: '1000',
       completedLength: '300',
-      ed2k: { completedLength: '300' },
     })
 
     expect(getTaskCompletedLength(task)).toBe(300)
   })
 
-  it('keeps normal HTTP and BT task progress unchanged', () => {
+  it('keeps progress tied to the native completed length', () => {
     const httpTask = createMockTask({
       status: 'active',
       totalLength: '1000',
@@ -99,7 +91,6 @@ describe('getTaskCompletedLength', () => {
       status: 'active',
       totalLength: '1000',
       completedLength: '300',
-      bittorrent: { info: { name: 'sample.iso' } },
     })
 
     expect(getTaskCompletedLength(httpTask)).toBe(200)
@@ -116,30 +107,6 @@ describe('getTaskName', () => {
     expect(getTaskName(null)).toBe('')
   })
 
-  it('returns BT info name when available', () => {
-    const task = createMockTask({
-      files: [createMockFile()],
-      bittorrent: { info: { name: 'My Torrent' } },
-    })
-    expect(getTaskName(task)).toBe('My Torrent')
-  })
-
-  it('returns BT info name before file metadata is populated', () => {
-    const task = createMockTask({
-      files: [],
-      bittorrent: { info: { name: 'My Torrent' } },
-    })
-    expect(getTaskName(task)).toBe('My Torrent')
-  })
-
-  it('uses the magnet display name while torrent metadata is pending', () => {
-    const task = createMockTask({
-      files: [],
-      bittorrent: { magnetLink: 'magnet:?xt=urn:btih:abc&dn=Ubuntu%20ISO' },
-    })
-    expect(getTaskName(task)).toBe('Ubuntu ISO')
-  })
-
   it('returns filename for single-file HTTP task', () => {
     const task = createMockTask({
       files: [createMockFile({ path: '/downloads/movie.mp4' })],
@@ -150,15 +117,6 @@ describe('getTaskName', () => {
   it('returns default when files array is empty', () => {
     const task = createMockTask({ files: [] })
     expect(getTaskName(task, { defaultName: 'N/A' })).toBe('N/A')
-  })
-
-  it('returns full-length BT names without truncation', () => {
-    const task = createMockTask({
-      files: [createMockFile()],
-      bittorrent: { info: { name: 'A'.repeat(100) } },
-    })
-    const result = getTaskName(task)
-    expect(result).toBe('A'.repeat(100))
   })
 })
 
@@ -292,14 +250,6 @@ describe('getTaskName', () => {
     expect(getTaskName(null, { defaultName: 'Unknown' })).toBe('Unknown')
   })
 
-  it('passes through BT names unmodified', () => {
-    const task = createMockTask({
-      files: [createMockFile()],
-      bittorrent: { info: { name: 'Ubuntu 24.04' } },
-    })
-    expect(getTaskName(task)).toBe('Ubuntu 24.04')
-  })
-
   it('returns original name for malformed percent sequence', () => {
     const task = createMockTask({
       files: [createMockFile({ path: '/downloads/bad%ZZname.txt' })],
@@ -327,140 +277,7 @@ describe('getTaskName', () => {
   })
 })
 
-describe('isBtMetadataTask', () => {
-  it('returns true for native aria2 metadata task without torrent info', () => {
-    const task = createMockTask({
-      bittorrent: { state: 'downloadingMetadata' },
-      files: [],
-    })
-
-    expect(isBtMetadataTask(task)).toBe(true)
-  })
-
-  it('returns false for native aria2 task awaiting file selection', () => {
-    const task = createMockTask({
-      bittorrent: { info: { name: 'Archive' }, state: 'paused', fileSelectionState: 'awaiting' },
-    })
-
-    expect(isBtMetadataTask(task)).toBe(false)
-  })
-
-  it('returns false for resolved BitTorrent content task', () => {
-    const task = createMockTask({
-      bittorrent: {
-        info: { name: 'KNOPPIX_V9.1CD-2021-01-25-EN' },
-      },
-      files: [createMockFile({ path: '/downloads/KNOPPIX.iso' })],
-    })
-
-    expect(isBtMetadataTask(task)).toBe(false)
-  })
-})
-
-describe('checkTaskIsBT', () => {
-  it('returns true when bittorrent metadata is present', () => {
-    const task = createMockTask({ bittorrent: { info: { name: 'test' } } })
-    expect(checkTaskIsBT(task)).toBe(true)
-  })
-
-  it('returns false when no bittorrent metadata', () => {
-    expect(checkTaskIsBT(createMockTask())).toBe(false)
-  })
-
-  it('returns false for empty object', () => {
-    expect(checkTaskIsBT()).toBe(false)
-  })
-})
-
-describe('checkTaskIsEd2kSearch', () => {
-  it('returns true for ED2K search request groups', () => {
-    const task = createMockTask({
-      ed2k: { searchActive: true },
-      files: [createMockFile({ path: '/Users/test/Downloads/aria2-next-ed2k-search-75c1fb5d8979819f' })],
-    })
-
-    expect(checkTaskIsEd2kSearch(task)).toBe(true)
-  })
-
-  it('returns false for normal ED2K file downloads', () => {
-    const task = createMockTask({
-      ed2k: { searchActive: false, name: 'eMule0.50a-Installer.exe' },
-      files: [createMockFile({ path: '/Users/test/Downloads/eMule0.50a-Installer.exe' })],
-    })
-
-    expect(checkTaskIsEd2kSearch(task)).toBe(false)
-  })
-})
-
-describe('task sharing state', () => {
-  it('identifies BT seeding without treating the helper as BT-only', () => {
-    const task = createMockTask({
-      bittorrent: { info: { name: 'test' } },
-      seeder: 'true',
-    })
-    expect(getTaskSharingKind(task)).toBe('bt')
-    expect(checkTaskIsSharing(task)).toBe(true)
-  })
-
-  it('identifies ED2K sharing from the common seeder flag', () => {
-    const task = createMockTask({
-      ed2k: { name: 'sample.bin', hash: 'abcdef' },
-      seeder: 'true',
-    })
-
-    expect(getTaskSharingKind(task)).toBe('ed2k')
-    expect(checkTaskIsSharing(task)).toBe(true)
-  })
-
-  it('returns null for non-sharing tasks', () => {
-    expect(getTaskSharingKind(createMockTask())).toBeNull()
-    expect(checkTaskIsSharing(createMockTask())).toBe(false)
-  })
-
-  it('returns false when seeder is false string', () => {
-    const task = createMockTask({
-      bittorrent: { info: { name: 'test' } },
-      seeder: 'false',
-    })
-    expect(getTaskSharingKind(task)).toBeNull()
-  })
-
-  it('preserves the protocol and paused sharing phase', () => {
-    const task = createMockTask({
-      status: 'paused',
-      bittorrent: { info: { name: 'test' } },
-      seeder: 'true',
-    })
-    expect(getTaskSharingKind(task)).toBe('bt')
-    expect(getTaskSharingState(task)).toEqual({ kind: 'bt', phase: 'paused' })
-    expect(checkTaskIsSharing(task)).toBe(false)
-  })
-
-  it('reads native sharing time from both P2P protocols', () => {
-    expect(getTaskSharingTime(createMockTask({ bittorrent: { finishedTime: '42' } }))).toBe(42)
-    expect(getTaskSharingTime(createMockTask({ ed2k: { sharingTime: '84' } }))).toBe(84)
-  })
-})
-
 describe('getTaskUri', () => {
-  it('returns engine-provided magnet link for BT task', () => {
-    const task = createMockTask({
-      bittorrent: { magnetLink: 'magnet:?xt=urn:btih:abc123&dn=test' },
-      files: [],
-    })
-    expect(getTaskUri(task)).toBe('magnet:?xt=urn:btih:abc123&dn=test')
-  })
-
-  it('returns engine-provided ED2K file link for ED2K task', () => {
-    const task = createMockTask({
-      ed2k: {
-        ed2kLink: 'ed2k://|file|movie.mkv|42|31313131313131313131313131313131|/',
-      },
-      files: [createMockFile({ uris: [] })],
-    })
-    expect(getTaskUri(task)).toBe('ed2k://|file|movie.mkv|42|31313131313131313131313131313131|/')
-  })
-
   it('returns first URI for single-file HTTP task', () => {
     const task = createMockTask({
       files: [
@@ -488,50 +305,6 @@ describe('getTaskUri', () => {
 })
 
 describe('resolveOpenTarget', () => {
-  it('returns torrent root directory for BT multi-file tasks', async () => {
-    const task = createMockTask({
-      dir: '/downloads',
-      bittorrent: { info: { name: 'MyTorrent' } },
-      files: [
-        {
-          index: '1',
-          path: '/downloads/MyTorrent/file1.mkv',
-          length: '1000',
-          completedLength: '1000',
-          selected: 'true',
-          uris: [],
-        },
-        {
-          index: '2',
-          path: '/downloads/MyTorrent/file2.srt',
-          length: '500',
-          completedLength: '500',
-          selected: 'true',
-          uris: [],
-        },
-      ],
-    })
-    expect(await resolveOpenTarget(task)).toBe('/downloads/MyTorrent')
-  })
-
-  it('returns file path for BT single-file tasks', async () => {
-    const task = createMockTask({
-      dir: '/downloads',
-      bittorrent: { info: { name: 'movie.mp4' } },
-      files: [
-        {
-          index: '1',
-          path: '/downloads/movie.mp4',
-          length: '1000',
-          completedLength: '1000',
-          selected: 'true',
-          uris: [],
-        },
-      ],
-    })
-    expect(await resolveOpenTarget(task)).toBe('/downloads/movie.mp4')
-  })
-
   it('returns file path for HTTP single-file tasks', async () => {
     const task = createMockTask({
       dir: '/downloads',
@@ -594,25 +367,6 @@ describe('resolveOpenTarget', () => {
 // ── getRestartDescriptors ────────────────────────────────────────────
 
 describe('getRestartDescriptors', () => {
-  it('returns engine-provided magnet group for BT tasks', () => {
-    const task = createMockTask({
-      bittorrent: { magnetLink: 'magnet:?xt=urn:btih:abc123&dn=test' },
-      files: [],
-    })
-    const result = getRestartDescriptors(task)
-    expect(result).toEqual([{ uris: ['magnet:?xt=urn:btih:abc123&dn=test'] }])
-  })
-
-  it('returns engine-provided ED2K group for ED2K tasks', () => {
-    const task = createMockTask({
-      ed2k: { ed2kLink: 'ed2k://|file|movie.mkv|42|31313131313131313131313131313131|/' },
-      files: [createMockFile({ uris: [] })],
-    })
-    expect(getRestartDescriptors(task)).toEqual([
-      { uris: ['ed2k://|file|movie.mkv|42|31313131313131313131313131313131|/'], path: '/tmp/test.txt' },
-    ])
-  })
-
   it('returns one group per file with all mirror URIs for HTTP tasks', () => {
     const task = createMockTask({
       files: [

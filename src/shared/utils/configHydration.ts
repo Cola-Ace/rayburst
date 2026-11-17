@@ -21,8 +21,6 @@ import { normalizeProxyMode } from '@shared/utils/proxy'
 import type { AppConfig, ClipboardConfig, ProxyConfig } from '@shared/types'
 import { normalizeSiteRules } from './siteRules'
 import { normalizeFileCategory } from '@shared/utils/fileCategory'
-import { isValidOptionalIpAddress } from '@shared/utils/ipAddress'
-import { isValidBtPeerIdPrefix, isValidBtUserAgent } from '@shared/utils/btIdentity'
 import {
   normalizeRecentUserAgentProfileIds,
   normalizeUserAgentProfiles,
@@ -83,19 +81,6 @@ function repairEnum<T extends readonly string[]>(
   repairs.push(key)
 }
 
-function normalizeHttpUrl(value: unknown, fallback: string, key: string, repairs: string[]): string {
-  if (typeof value === 'string') {
-    try {
-      const url = new URL(value.trim())
-      if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString()
-    } catch {
-      // Repaired below.
-    }
-  }
-  repairs.push(key)
-  return fallback
-}
-
 function normalizeProxy(value: unknown, repairs: string[]): ProxyConfig {
   const defaults = clonePlain(DEFAULT_APP_CONFIG.proxy)
   const saved = isRecord(value) ? value : {}
@@ -130,10 +115,7 @@ function normalizeClipboard(value: unknown): ClipboardConfig {
     background: typeof saved.background === 'boolean' ? saved.background : defaults.background,
     http: typeof saved.http === 'boolean' ? saved.http : defaults.http,
     sftp: typeof saved.sftp === 'boolean' ? saved.sftp : defaults.sftp,
-    magnet: typeof saved.magnet === 'boolean' ? saved.magnet : defaults.magnet,
-    ed2k: typeof saved.ed2k === 'boolean' ? saved.ed2k : defaults.ed2k,
     thunder: typeof saved.thunder === 'boolean' ? saved.thunder : defaults.thunder,
-    btHash: typeof saved.btHash === 'boolean' ? saved.btHash : defaults.btHash,
     httpFilesOnly: typeof saved.httpFilesOnly === 'boolean' ? saved.httpFilesOnly : defaults.httpFilesOnly,
   }
 }
@@ -217,56 +199,12 @@ function normalizeScalarValues(config: Record<string, unknown>, repairs: string[
     DEFAULT_APP_CONFIG.notificationClickAction,
     repairs,
   )
-  repairEnum(
-    config,
-    'extensionTorrentAction',
-    ['open', 'save'] as const,
-    DEFAULT_APP_CONFIG.extensionTorrentAction,
-    repairs,
-  )
   repairEnum(config, 'logLevel', APP_LOG_LEVELS, DEFAULT_APP_CONFIG.logLevel, repairs)
   repairEnum(config, 'floatWindow', FLOAT_WINDOW_MODES, DEFAULT_APP_CONFIG.floatWindow, repairs)
   repairEnum(config, 'aria2LogLevel', ARIA2_LOG_LEVELS, DEFAULT_APP_CONFIG.aria2LogLevel, repairs)
   repairEnum(config, 'fileAllocation', FILE_ALLOCATION_OPTIONS, DEFAULT_APP_CONFIG.fileAllocation, repairs)
   repairEnum(config, 'incompleteSuffix', ['', INCOMPLETE_SUFFIX] as const, DEFAULT_APP_CONFIG.incompleteSuffix, repairs)
   repairEnum(config, 'fileDeletionMode', ['trash', 'permanent'] as const, DEFAULT_APP_CONFIG.fileDeletionMode, repairs)
-  repairEnum(
-    config,
-    'btEncryption',
-    ['preferred', 'required', 'disabled'] as const,
-    DEFAULT_APP_CONFIG.btEncryption,
-    repairs,
-  )
-  repairEnum(config, 'btTransport', ['tcp', 'utp', 'both'] as const, DEFAULT_APP_CONFIG.btTransport, repairs)
-  if (!isValidBtUserAgent(config.btUserAgent)) {
-    config.btUserAgent = DEFAULT_APP_CONFIG.btUserAgent
-    repairs.push('btUserAgent')
-  }
-  if (!isValidBtPeerIdPrefix(config.btPeerIdPrefix)) {
-    config.btPeerIdPrefix = DEFAULT_APP_CONFIG.btPeerIdPrefix
-    repairs.push('btPeerIdPrefix')
-  }
-  repairEnum(
-    config,
-    'magnetFileSelectionPolicy',
-    ['download-all', 'prompt', 'manual'] as const,
-    DEFAULT_APP_CONFIG.magnetFileSelectionPolicy,
-    repairs,
-  )
-  repairEnum(
-    config,
-    'btBlocklistScope',
-    ['peers', 'peers-and-trackers', 'all'] as const,
-    DEFAULT_APP_CONFIG.btBlocklistScope,
-    repairs,
-  )
-
-  if (typeof config.btExternalIp !== 'string' || !isValidOptionalIpAddress(config.btExternalIp)) {
-    config.btExternalIp = DEFAULT_APP_CONFIG.btExternalIp
-    repairs.push('btExternalIp')
-  } else {
-    config.btExternalIp = config.btExternalIp.trim()
-  }
   for (const key of Object.keys(NUMERIC_CONFIG_CONSTRAINTS) as NumericConfigKey[]) {
     const constraint = NUMERIC_CONFIG_CONSTRAINTS[key]
     if (isNumericValueValid(config[key], constraint)) {
@@ -281,12 +219,6 @@ function normalizeScalarValues(config: Record<string, unknown>, repairs: string[
     config[key] = DEFAULT_APP_CONFIG[key as keyof typeof DEFAULT_APP_CONFIG]
     repairs.push(key)
   }
-  config.btPeerBlocklistUrl = normalizeHttpUrl(
-    config.btPeerBlocklistUrl,
-    DEFAULT_APP_CONFIG.btPeerBlocklistUrl,
-    'btPeerBlocklistUrl',
-    repairs,
-  )
 }
 
 function dedupe(values: string[]): string[] {

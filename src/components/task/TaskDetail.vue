@@ -5,16 +5,7 @@ import { useI18n } from 'vue-i18n'
 import type { I18nKey } from '@shared/i18nTypes'
 import { logger } from '@shared/logger'
 import { writeAppClipboardText } from '@shared/utils'
-import {
-  checkTaskIsBT,
-  checkTaskIsSharing,
-  getTaskSharingState,
-  getTaskSharingTime,
-  getTaskName,
-  bytesToSize,
-  localeDateTimeFormat,
-  isBtMetadataTask,
-} from '@shared/utils'
+import { getTaskName, localeDateTimeFormat } from '@shared/utils'
 import {
   NDrawer,
   NDrawerContent,
@@ -34,7 +25,6 @@ import {
   InformationCircleOutline,
   PulseOutline,
   DocumentOutline,
-  PeopleOutline,
   ServerOutline,
   SettingsOutline,
   SearchOutline,
@@ -43,11 +33,8 @@ import { useTaskDetailOptions } from '@/composables/useTaskDetailOptions'
 import { replaceTaskUri } from '@/api/aria2'
 import SpeedLimitInput from '@/components/common/SpeedLimitInput.vue'
 import {
-  buildBtHealthSummary,
   buildMediaDetailRows,
-  buildEd2kDetailSummary,
   buildTaskDetailKind,
-  buildTaskTransferSummary,
   buildUriDetailSummary,
   getTaskDetailStatusLabelKey,
 } from '@/composables/useTaskDetailSummary'
@@ -64,14 +51,9 @@ import { mediaStateLabel, canSelectMedia } from '@shared/utils/media'
 import { useTaskSelectionStore } from '@/stores/taskSelection'
 import TaskDetailActivity from './detail/TaskDetailActivity.vue'
 import TaskDetailFiles from './detail/TaskDetailFiles.vue'
-import TaskDetailPeers from './detail/TaskDetailPeers.vue'
 import TaskDetailSources from './detail/TaskDetailSources.vue'
-import TaskDetailTrackers from './detail/TaskDetailTrackers.vue'
 import RenameCompletedFile from './detail/RenameCompletedFile.vue'
 import MoveDownload from './detail/MoveDownload.vue'
-import { forceBtRecheck } from '@/api/aria2'
-import { getErrorMessage } from '@shared/utils/errorMessage'
-import { formatSharingDuration, getBtLifecycleState } from '@/composables/useBtLifecycle'
 
 const props = defineProps<{
   show: boolean
@@ -91,22 +73,6 @@ const historyStore = useHistoryStore()
 const message = useAppMessage()
 const taskRef = computed(() => props.task)
 const taskPrimaryUrl = computed(() => props.task?.files?.[0]?.uris?.[0]?.uri ?? '')
-const rechecking = ref(false)
-
-async function recheckTask() {
-  const gid = props.task?.gid
-  if (!gid || rechecking.value) return
-  rechecking.value = true
-  try {
-    await forceBtRecheck({ gid })
-    message.success(t('task.options-applied'))
-  } catch (error) {
-    logger.warn('TaskDetail.recheck', getErrorMessage(error))
-    message.error(t('task.options-apply-failed'))
-  } finally {
-    rechecking.value = false
-  }
-}
 
 const {
   form: optForm,
@@ -198,8 +164,6 @@ interface TabDef {
   key: string
   labelKey: I18nKey
   icon: typeof InformationCircleOutline
-  btOnly?: boolean
-  protocolOnly?: boolean
   uriOnly?: boolean
   liveOnly?: boolean
 }
@@ -209,9 +173,6 @@ const allTabs: TabDef[] = [
   { key: 'files', labelKey: 'task.task-tab-files', icon: DocumentOutline },
   { key: 'options', labelKey: 'task.task-tab-options', icon: SettingsOutline, uriOnly: true, liveOnly: true },
   { key: 'sources', labelKey: 'task.task-tab-sources', icon: ServerOutline, uriOnly: true },
-  { key: 'status', labelKey: 'task.task-tab-status', icon: PulseOutline, protocolOnly: true, liveOnly: true },
-  { key: 'peers', labelKey: 'task.task-tab-peers', icon: PeopleOutline, btOnly: true, liveOnly: true },
-  { key: 'trackers', labelKey: 'task.task-tab-trackers', icon: ServerOutline, btOnly: true, liveOnly: true },
 ]
 
 const isTerminal = computed(() => ['complete', 'error', 'removed'].includes(props.task?.status ?? ''))
@@ -222,8 +183,6 @@ const visibleTabs = computed(() =>
   allTabs.filter(
     (tab) =>
       !(props.task?.media && (tab.key === 'activity' || (tab.key === 'files' && !isTerminal.value))) &&
-      (!tab.btOnly || isBT.value) &&
-      (!tab.protocolOnly || isBT.value || isED2K.value) &&
       (!tab.uriOnly || isURI.value || (tab.key === 'options' && Boolean(props.task?.media))) &&
       (!tab.liveOnly || !isTerminal.value || (tab.key === 'options' && retriesFromSource.value)),
   ),
@@ -237,14 +196,9 @@ function switchTab(key: string) {
   activeTab.value = key
 }
 
-const isBT = computed(() => (props.task ? checkTaskIsBT(props.task) : false))
-const isED2K = computed(() => !!props.task?.ed2k)
 const detailKind = computed(() => buildTaskDetailKind(props.task))
 const isURI = computed(() => detailKind.value === 'uri')
 const uriSummary = computed(() => buildUriDetailSummary(props.task))
-const btHealth = computed(() => buildBtHealthSummary(props.task))
-const ed2kSummary = computed(() => buildEd2kDetailSummary(props.task))
-const transferSummary = computed(() => buildTaskTransferSummary(props.task))
 const mediaRows = computed(() => buildMediaDetailRows(props.task, locale.value))
 function editMedia() {
   if (!props.task || !canSelectMedia(props.task)) return
@@ -269,30 +223,7 @@ watch(visibleTabs, (tabs) => {
     prevTabIndex.value = 0
   }
 })
-const sharingState = computed(() => (props.task ? getTaskSharingState(props.task) : null))
-const sharingKind = computed(() => sharingState.value?.kind ?? null)
-const isSharing = computed(() => (props.task ? checkTaskIsSharing(props.task) : false))
-const isMetadataFetching = computed(() => (props.task?.status === 'active' ? isBtMetadataTask(props.task) : false))
-const btLifecycle = computed(() => (props.task ? getBtLifecycleState(props.task) : 'none'))
-const taskStatusKey = computed(() =>
-  btLifecycle.value === 'selection'
-    ? 'awaiting-file-selection'
-    : btLifecycle.value === 'recovering'
-      ? 'bt-recovering'
-      : btLifecycle.value === 'error'
-        ? 'error'
-        : sharingState.value?.phase === 'paused'
-          ? sharingState.value.kind === 'bt'
-            ? 'seeding-paused'
-            : 'sharing-paused'
-          : isSharing.value
-            ? sharingKind.value === 'bt'
-              ? 'seeding'
-              : 'sharing'
-            : isMetadataFetching.value
-              ? 'bt-metadata-fetching'
-              : props.task?.status,
-)
+const taskStatusKey = computed(() => props.task?.status)
 const taskStatus = computed(() => {
   if (props.task?.media) return t(mediaStateLabel[props.task.media.state])
   const key = taskStatusKey.value
@@ -331,50 +262,8 @@ watch(
   },
   { immediate: true },
 )
-const btInfo = computed(() => {
-  if (!isBT.value || !props.task) return null
-  return props.task.bittorrent ?? null
-})
-const taskErrorMessage = computed(
-  () => props.task?.media?.error || props.task?.errorMessage || btInfo.value?.error?.message || '',
-)
-const taskErrorCode = computed(() => props.task?.errorCode || btInfo.value?.error?.code || '')
-const sharingDuration = computed(() =>
-  formatSharingDuration(props.task ? getTaskSharingTime(props.task) : 0, {
-    day: t('task.sharing-day-unit'),
-    hour: t('app.hour') || 'h',
-    minute: t('app.minute') || 'm',
-    second: t('app.second') || 's',
-  }),
-)
-const hasPieceLength = computed(
-  () => Number.isFinite(Number(props.task?.pieceLength)) && Number(props.task?.pieceLength) > 0,
-)
-const hasPieceCount = computed(
-  () => Number.isFinite(Number(props.task?.numPieces)) && Number(props.task?.numPieces) > 0,
-)
-const hasBtOverviewDetails = computed(() =>
-  Boolean(
-    props.task?.infoHash ||
-    hasPieceLength.value ||
-    hasPieceCount.value ||
-    sharingDuration.value ||
-    btInfo.value?.creationDate ||
-    btInfo.value?.comment,
-  ),
-)
-
-const ed2kInfo = computed(() => {
-  if (!isED2K.value || !props.task) return null
-  return props.task.ed2k
-})
-const sharingDurationLabel = computed(() => (isED2K.value ? t('task.sharing-time') : t('task.seeding-time')))
-
-function yesNo(value?: boolean | string): string {
-  if (value === undefined || value === '') return '-'
-  const normalized = typeof value === 'boolean' ? value : value === 'true'
-  return normalized ? t('task.task-ed2k-yes') : t('task.task-ed2k-no')
-}
+const taskErrorMessage = computed(() => props.task?.media?.error || props.task?.errorMessage || '')
+const taskErrorCode = computed(() => props.task?.errorCode || '')
 
 type TaskStatusTagType = 'default' | 'success' | 'warning' | 'error' | 'info'
 
@@ -382,13 +271,7 @@ const statusTagType = computed<TaskStatusTagType>(() => {
   switch (taskStatusKey.value) {
     case 'active':
     case 'waiting':
-    case 'bt-metadata-fetching':
-    case 'awaiting-file-selection':
-    case 'bt-recovering':
       return 'warning'
-    case 'seeding':
-    case 'sharing':
-      return 'info'
     case 'complete':
       return 'success'
     case 'error':
@@ -490,118 +373,15 @@ async function onFileRenamed() {
                   <CopyableValue :value="task.gid" :label="copyLabel(t('task.task-gid'), 'GID')" />
                 </NDescriptionsItem>
               </NDescriptions>
-              <template v-if="isBT && btInfo && hasBtOverviewDetails">
-                <div class="section-divider">BitTorrent</div>
-                <NDescriptions
-                  :column="1"
-                  label-placement="left"
-                  bordered
-                  size="small"
-                  :label-style="{ width: '1px', whiteSpace: 'nowrap' }"
-                >
-                  <NDescriptionsItem v-if="task.infoHash" :label="t('task.task-info-hash') || 'Hash'">
-                    <CopyableValue :value="task.infoHash" :label="copyLabel(t('task.task-info-hash'), 'Hash')" />
-                  </NDescriptionsItem>
-                  <NDescriptionsItem v-if="hasPieceLength" :label="t('task.task-piece-length') || 'Piece Size'">
-                    {{ bytesToSize(String(task.pieceLength)) }}
-                  </NDescriptionsItem>
-                  <NDescriptionsItem v-if="hasPieceCount" :label="t('task.task-num-pieces') || 'Pieces'">
-                    {{ task.numPieces }}
-                  </NDescriptionsItem>
-                  <NDescriptionsItem v-if="sharingDuration" :label="sharingDurationLabel">
-                    {{ sharingDuration }}
-                  </NDescriptionsItem>
-                  <NDescriptionsItem
-                    v-if="btInfo?.creationDate"
-                    :label="t('task.task-bittorrent-creation-date') || 'Created'"
-                  >
-                    {{ localeDateTimeFormat(Number(btInfo.creationDate), locale) }}
-                  </NDescriptionsItem>
-                  <NDescriptionsItem v-if="btInfo?.comment" :label="t('task.task-bittorrent-comment') || 'Comment'">
-                    {{ btInfo.comment }}
-                  </NDescriptionsItem>
-                </NDescriptions>
-              </template>
-              <template v-if="isED2K && ed2kInfo?.hash">
-                <div class="section-divider">ED2K</div>
-                <NDescriptions
-                  :column="1"
-                  label-placement="left"
-                  bordered
-                  size="small"
-                  :label-style="{ width: '1px', whiteSpace: 'nowrap' }"
-                >
-                  <NDescriptionsItem v-if="ed2kInfo.hash" :label="t('task.task-ed2k-hash')">
-                    <CopyableValue :value="ed2kInfo.hash" :label="t('task.task-ed2k-hash')" />
-                  </NDescriptionsItem>
-                  <NDescriptionsItem v-if="sharingDuration" :label="sharingDurationLabel">
-                    {{ sharingDuration }}
-                  </NDescriptionsItem>
-                </NDescriptions>
-              </template>
             </template>
           </div>
 
           <div v-else-if="activeTab === 'activity'" key="activity" class="tab-content">
-            <TaskDetailActivity :task="task" :transfer-summary="transferSummary" />
-          </div>
-
-          <div v-else-if="activeTab === 'status' && isBT" key="bt-status" class="tab-content">
-            <template v-if="task && isBT">
-              <div class="status-actions">
-                <NButton size="small" :loading="rechecking" :disabled="!optCanModify" @click="recheckTask">
-                  {{ t('task.bt-recheck') }}
-                </NButton>
-              </div>
-              <NDescriptions
-                :column="1"
-                label-placement="left"
-                bordered
-                size="small"
-                :label-style="{ width: '1px', whiteSpace: 'nowrap' }"
-              >
-                <NDescriptionsItem :label="t('task.task-bt-metadata-state')">
-                  {{ t(`task.task-bt-metadata-${btHealth.metadataState}`) }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-has-metadata')">
-                  {{ yesNo(btHealth.hasMetadata) }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-selected-files')">
-                  {{ btHealth.selectedFileCount }} / {{ btHealth.totalFileCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-selected-size')">
-                  {{ bytesToSize(btHealth.selectedLength) }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-trackers')">
-                  {{ btHealth.trackerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-peers')">
-                  {{ btHealth.peerCount }}
-                  <span v-if="btHealth.seederPeerCount > 0" class="muted-inline">
-                    · {{ btHealth.seederPeerCount }} {{ t('task.task-peer-seeder') }}
-                  </span>
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-active-peers')">
-                  {{ t('task.task-peer-download-speed') }} {{ btHealth.activeDownloadPeerCount }} /
-                  {{ t('task.task-peer-upload-speed') }} {{ btHealth.activeUploadPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-bt-choking')">
-                  {{ t('task.task-bt-am-choking') }} {{ btHealth.amChokingCount }} /
-                  {{ t('task.task-bt-peer-choking') }} {{ btHealth.peerChokingCount }}
-                </NDescriptionsItem>
-              </NDescriptions>
-            </template>
+            <TaskDetailActivity :task="task" />
           </div>
 
           <div v-else-if="activeTab === 'files'" key="files" class="tab-content">
-            <TaskDetailFiles
-              :files="files"
-              :gid="task?.gid"
-              :editable="optCanModify && isBT"
-              :terminal="isTerminal"
-              :tooltip="t('about.click-to-copy')"
-              :on-copy="copyDetailValue"
-            />
+            <TaskDetailFiles :files="files" :tooltip="t('about.click-to-copy')" :on-copy="copyDetailValue" />
           </div>
 
           <div v-else-if="activeTab === 'sources'" key="sources" class="tab-content">
@@ -609,7 +389,6 @@ async function onFileRenamed() {
               v-if="task && isURI"
               :task="task"
               :summary="uriSummary"
-              :terminal="isTerminal"
               :tooltip="t('about.click-to-copy')"
               :on-copy="copyDetailValue"
             />
@@ -628,13 +407,6 @@ async function onFileRenamed() {
               <NFormItem v-if="!isTerminal" :label="t('task.speed-limit') + ':'">
                 <SpeedLimitInput
                   v-model:value="optForm.maxDownloadLimit"
-                  :disabled="!optCanModify"
-                  :placeholder="t('task.speed-limit-unlimited')"
-                />
-              </NFormItem>
-              <NFormItem v-if="!isTerminal && isBT" :label="t('task.upload-limit') + ':'">
-                <SpeedLimitInput
-                  v-model:value="optForm.maxUploadLimit"
                   :disabled="!optCanModify"
                   :placeholder="t('task.speed-limit-unlimited')"
                 />
@@ -759,106 +531,6 @@ async function onFileRenamed() {
                 </NButton>
               </div>
             </NForm>
-          </div>
-
-          <div v-else-if="activeTab === 'status' && isED2K" key="ed2k-status" class="tab-content">
-            <template v-if="ed2kInfo">
-              <NDescriptions
-                :column="1"
-                label-placement="left"
-                bordered
-                size="small"
-                :label-style="{ width: '1px', whiteSpace: 'nowrap' }"
-              >
-                <NDescriptionsItem :label="t('task.task-ed2k-hash')">
-                  <CopyableValue :value="ed2kInfo.hash || '-'" :label="t('task.task-ed2k-hash')" />
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-name')">
-                  <CopyableValue :value="ed2kInfo.name || taskFullName" :label="t('task.task-name')" />
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-file-size')">
-                  {{ ed2kInfo.length ? bytesToSize(ed2kInfo.length) : bytesToSize(task?.totalLength || '0') }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-part-hash-count')">
-                  {{ ed2kInfo.partHashCount || 0 }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-aich-root')">
-                  <CopyableValue :value="ed2kInfo.aichRoot || '-'" :label="t('task.task-ed2k-aich-root')" />
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-server-count')">
-                  {{ ed2kSummary.connectedServerCount }} / {{ ed2kSummary.serverCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-peer-count')">
-                  {{ ed2kSummary.peerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-queued-peer-count')">
-                  {{ ed2kSummary.queuedPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-accepted-peer-count')">
-                  {{ ed2kSummary.acceptedPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-dead-peer-count')">
-                  {{ ed2kSummary.deadPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-low-id-peer-count')">
-                  {{ ed2kSummary.lowIdPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-callback-waiting-peer-count')">
-                  {{ ed2kSummary.callbackWaitingPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-kad-node-count')">
-                  {{ ed2kSummary.kadNodeCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-kad-router-count')">
-                  {{ ed2kSummary.kadRouterCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-kad-firewalled')">
-                  {{ yesNo(ed2kSummary.kadFirewalled) }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-kad-observed-address-count')">
-                  {{ ed2kInfo.kadObservedAddressCount || 0 }}
-                </NDescriptionsItem>
-                <NDescriptionsItem v-if="ed2kSummary.hasSearchState" :label="t('task.task-ed2k-search-active')">
-                  {{ yesNo(ed2kInfo.searchActive) }}
-                </NDescriptionsItem>
-                <NDescriptionsItem v-if="ed2kSummary.hasSearchState" :label="t('task.task-ed2k-search-more-results')">
-                  {{ yesNo(ed2kInfo.searchMoreResults) }}
-                </NDescriptionsItem>
-                <NDescriptionsItem v-if="ed2kSummary.hasSearchState" :label="t('task.task-ed2k-search-result-count')">
-                  {{ ed2kInfo.searchResultCount || 0 }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-uploading-peer-count')">
-                  {{ ed2kSummary.uploadingPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-waiting-upload-peer-count')">
-                  {{ ed2kSummary.waitingUploadPeerCount }}
-                </NDescriptionsItem>
-                <NDescriptionsItem :label="t('task.task-ed2k-peer-credit-count')">
-                  {{ ed2kInfo.peerCreditCount || 0 }}
-                </NDescriptionsItem>
-              </NDescriptions>
-            </template>
-          </div>
-
-          <div v-else-if="activeTab === 'peers'" key="peers" class="tab-content">
-            <TaskDetailPeers
-              :gid="task?.gid ?? ''"
-              :editable="optCanModify"
-              :peers="task?.peers"
-              :locale="locale"
-              :tooltip="t('about.click-to-copy')"
-              :on-copy="copyDetailValue"
-            />
-          </div>
-
-          <div v-else-if="activeTab === 'trackers'" key="trackers" class="tab-content">
-            <TaskDetailTrackers
-              :gid="task?.gid ?? ''"
-              :web-seeds="task?.bittorrent?.webSeeds"
-              :editable="optCanModify"
-              :tooltip="t('about.click-to-copy')"
-              :on-copy="copyDetailValue"
-            />
           </div>
         </Transition>
       </div>

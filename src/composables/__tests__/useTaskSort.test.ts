@@ -19,9 +19,9 @@ function mockTask(gid: string, overrides: Partial<Aria2Task> = {}): Aria2Task {
     status: 'active',
     totalLength: '1000',
     completedLength: '500',
-    uploadLength: '0',
+
     downloadSpeed: '100',
-    uploadSpeed: '0',
+
     connections: '1',
     dir: '/downloads',
     files: [
@@ -38,11 +38,10 @@ function mockTask(gid: string, overrides: Partial<Aria2Task> = {}): Aria2Task {
   }
 }
 
-function mockBtTask(gid: string, name: string, overrides: Partial<Aria2Task> = {}): Aria2Task {
-  return mockTask(gid, {
-    bittorrent: { info: { name } },
-    ...overrides,
-  })
+function mockNamedTask(gid: string, name: string, overrides: Partial<Aria2Task> = {}): Aria2Task {
+  const task = mockTask(gid, overrides)
+  task.files[0].path = `/downloads/${name}`
+  return task
 }
 
 // ── Helper: extract GID order after sort ─────────────────────────────
@@ -96,19 +95,19 @@ describe('sortTasks', () => {
 
   describe('field: name', () => {
     it('sorts A-Z (ASC)', () => {
-      const tasks = [mockBtTask('c', 'Zebra'), mockBtTask('a', 'Alpha'), mockBtTask('b', 'Mango')]
+      const tasks = [mockNamedTask('c', 'Zebra'), mockNamedTask('a', 'Alpha'), mockNamedTask('b', 'Mango')]
       sortTasks(tasks, 'name', 'asc', new Map())
       expect(gids(tasks)).toEqual(['a', 'b', 'c'])
     })
 
     it('sorts Z-A (DESC)', () => {
-      const tasks = [mockBtTask('a', 'Alpha'), mockBtTask('c', 'Zebra'), mockBtTask('b', 'Mango')]
+      const tasks = [mockNamedTask('a', 'Alpha'), mockNamedTask('c', 'Zebra'), mockNamedTask('b', 'Mango')]
       sortTasks(tasks, 'name', 'desc', new Map())
       expect(gids(tasks)).toEqual(['c', 'b', 'a'])
     })
 
     it('is case-insensitive', () => {
-      const tasks = [mockBtTask('b', 'banana'), mockBtTask('a', 'Apple')]
+      const tasks = [mockNamedTask('b', 'banana'), mockNamedTask('a', 'Apple')]
       sortTasks(tasks, 'name', 'asc', new Map())
       expect(gids(tasks)).toEqual(['a', 'b'])
     })
@@ -187,22 +186,6 @@ describe('sortTasks', () => {
       ]
       sortTasks(tasks, 'progress', 'desc', new Map())
       expect(gids(tasks)).toEqual(['b', 'a'])
-    })
-
-    it('uses aria2 completedLength for ED2K sorting', () => {
-      const tasks = [
-        mockTask('http', { totalLength: '1000', completedLength: '500' }),
-        mockTask('ed2k', {
-          status: 'active',
-          totalLength: '1000',
-          completedLength: '800',
-          ed2k: {
-            completedLength: '800',
-          },
-        }),
-      ]
-      sortTasks(tasks, 'progress', 'desc', new Map())
-      expect(gids(tasks)).toEqual(['ed2k', 'http'])
     })
   })
 

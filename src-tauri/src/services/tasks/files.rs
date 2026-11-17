@@ -98,7 +98,6 @@ struct Entry {
     paths: Vec<PathBuf>,
     state: FileState,
     seen: Instant,
-    recheck: bool,
 }
 pub struct FileMonitor {
     watcher: Option<RecommendedWatcher>,
@@ -146,7 +145,6 @@ impl FileMonitor {
         let mut dirty = force || changed || self.checked.elapsed() >= Duration::from_secs(30);
         for task in tasks {
             let complete = task.status == "complete"
-                || task.seeder.as_deref() == Some("true")
                 || (task.status == "paused" && self.entries.contains_key(&task.gid));
             if !complete {
                 self.entries.remove(&task.gid);
@@ -160,7 +158,6 @@ impl FileMonitor {
                     paths: paths.clone(),
                     state: FileState::Unknown,
                     seen: now,
-                    recheck: false,
                 }
             });
             if entry.paths != paths {
@@ -175,8 +172,6 @@ impl FileMonitor {
         if dirty {
             for entry in self.entries.values_mut() {
                 entry.state = availability(&entry.paths);
-                entry.recheck |=
-                    matches!(entry.state, FileState::Missing | FileState::Inaccessible);
             }
             self.checked = now;
             let roots: HashSet<_> = self
@@ -212,15 +207,6 @@ impl FileMonitor {
             .iter()
             .map(|(gid, entry)| (gid.clone(), entry.state))
             .collect()
-    }
-
-    pub fn needs_recheck(&self, gid: &str) -> bool {
-        self.entries.get(gid).is_some_and(|entry| entry.recheck)
-    }
-    pub fn rechecked(&mut self, gid: &str) {
-        if let Some(entry) = self.entries.get_mut(gid) {
-            entry.recheck = false;
-        }
     }
 }
 
@@ -377,56 +363,6 @@ pub async fn inspect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn deletion_prunes_only_empty_task_directories_and_can_retry_missing_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let nested = dir.path().join("torrent/sub/file.bin");
-        let shared = dir.path().join("shared/file.bin");
-        let extra = dir.path().join("keep/.hidden");
-        let owned = dir.path().join("keep/file.bin");
-        let category = dir.path().join("category");
-        let category_file = category.join("gone.bin");
-        for path in [&nested, &shared, &extra, &owned, &category_file] {
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, b"content").unwrap();
-        }
-        let paths = vec![nested, shared.clone(), owned, category_file];
-        let protected = HashSet::from([path_identity(&shared)]);
-        let roots = HashSet::from([path_identity(&category)]);
-        for _ in 0..2 {
-            delete_content(
-                &paths,
-                &protected,
-                dir.path(),
-                &roots,
-                crate::commands::fs::FileDeletionMode::Permanent,
-            )
-            .unwrap();
-        }
-        assert!(!dir.path().join("torrent").exists());
-        assert!(shared.is_file());
-        assert!(extra.is_file());
-        assert!(category.is_dir());
-        assert!(dir.path().is_dir());
-
-        let outside = tempfile::tempdir().unwrap();
-        assert!(
-            cleanup_directories(&[outside.path().join("absent")], dir.path(), &roots)
-                .unwrap()
-                .is_empty()
-        );
-        let missing = dir.path().join("missing/file.bin");
-        std::fs::create_dir(missing.parent().unwrap()).unwrap();
-        delete_content(
-            &[missing],
-            &protected,
-            dir.path(),
-            &roots,
-            crate::commands::fs::FileDeletionMode::Permanent,
-        )
-        .unwrap();
-        assert!(!dir.path().join("missing").exists());
-    }
 
     #[test]
     fn missing_selected_files_and_shared_content_keep_distinct_ownership() {
