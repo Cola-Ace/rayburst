@@ -15,7 +15,7 @@ import { useHttpAuthStore } from '@/stores/httpAuth'
 import { useFilenamePreview } from '@/composables/useFilenamePreview'
 import { useDownloadPreview } from '@/composables/useDownloadPreview'
 import { useFreeSpace } from '@/composables/useFreeSpace'
-import { bytesToSize, detectResource } from '@shared/utils'
+import { bytesToSize } from '@shared/utils'
 import {
   mergeRawUriLines,
   normalizeUriLines,
@@ -438,14 +438,6 @@ onMounted(async () => {
   }
 })
 
-// When dialog opens: resolve file items, flush URIs into textarea, auto-select tab
-//
-// Race-condition guard: the batch.length watcher may fire and drain pendingBatch
-// BEFORE this async watcher finishes its clipboard read.  A simple `hasBatch`
-// re-check fails because the batch is already empty by that point.  Instead we
-// use a flag that the batch.length watcher sets synchronously whenever it writes
-// to form.uris — the flag survives the drain and is visible after the await.
-let batchDidWrite = false
 // Keep receipt ownership even after editing/removing URLs or replacing their metadata.
 const draftRequestIds = new Set<string>()
 function rememberRequests(items: BatchItem[]) {
@@ -460,20 +452,13 @@ let opening: Promise<void> = Promise.resolve()
 
 watch(
   () => props.show,
-  (visible, _, onCleanup) => {
-    opening = prepare(visible, onCleanup)
+  (visible) => {
+    opening = prepare(visible)
   },
 )
 
-async function prepare(visible: boolean, onCleanup: (cleanup: () => void) => void) {
-  let current = true
-  onCleanup(() => {
-    current = false
-  })
-  if (!visible) {
-    batchDidWrite = false
-    return
-  }
+async function prepare(visible: boolean) {
+  if (!visible) return
 
   if (hasBatch.value) {
     rememberRequests(batch.value)
@@ -490,25 +475,6 @@ async function prepare(visible: boolean, onCleanup: (cleanup: () => void) => voi
       }
       appStore.pendingBatch = batch.value.filter((i) => i.kind !== 'uri')
     }
-  } else {
-    // No batch — check clipboard for URIs
-    try {
-      const { readText } = await import('@tauri-apps/plugin-clipboard-manager')
-      const text = await readText()
-      if (!current) return
-      // Re-check: a deep-link/extension batch may have arrived and been
-      // processed (and drained) during the async readText() gap.
-      // `hasBatch` is unreliable here because batchWatcher drains
-      // pendingBatch after writing — use the flag instead.
-      if (batchDidWrite) return
-      if (text && detectResource(text, preferenceStore.config.clipboard)) {
-        // The main window must not offer this link again once it is here (#751).
-        void invoke('clipboard_offer', { text }).catch(() => {})
-        form.value.uris = text.trim()
-      }
-    } catch (e) {
-      logger.debug('AddTask.readClipboard', e)
-    }
   }
 }
 
@@ -522,7 +488,6 @@ watch(
     rememberRequests(batch.value)
     const uriItems = batch.value.filter((i) => i.kind === 'uri')
     if (uriItems.length > 0) {
-      batchDidWrite = true
       form.value.uris = mergeRawUriLines(
         form.value.uris,
         uriItems.map((i) => i.payload),

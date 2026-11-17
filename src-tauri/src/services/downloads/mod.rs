@@ -305,27 +305,7 @@ pub fn validate_uris(uris: &[String]) -> Result<(), AppError> {
     for uri in uris {
         let parsed = url::Url::parse(uri)
             .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
-        if parsed.scheme() == "thunder" {
-            use base64::Engine;
-            let payload = uri
-                .split_once("://")
-                .map(|(_, value)| value)
-                .unwrap_or_default();
-            let bytes = base64::engine::general_purpose::STANDARD
-                .decode(payload)
-                .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
-            let decoded = String::from_utf8(bytes)
-                .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
-            let target = decoded
-                .strip_prefix("AA")
-                .and_then(|value| value.strip_suffix("ZZ"))
-                .ok_or_else(|| AppError::InvalidInput("Invalid download URL".into()))?;
-            let target = url::Url::parse(target)
-                .map_err(|_| AppError::InvalidInput("Invalid download URL".into()))?;
-            if !matches!(target.scheme(), "http" | "https" | "ftp" | "sftp") {
-                return Err(AppError::InvalidInput("Unsupported download URL".into()));
-            }
-        } else if !matches!(parsed.scheme(), "http" | "https" | "ftp" | "sftp") {
+        if !matches!(parsed.scheme(), "http" | "https" | "ftp" | "sftp") {
             return Err(AppError::InvalidInput("Unsupported download URL".into()));
         }
     }

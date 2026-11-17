@@ -19,7 +19,6 @@ export interface ConfigValidationIssue {
  * unbounded, preventing settings that would exhaust desktop resources.
  */
 export const NUMERIC_CONFIG_CONSTRAINTS = {
-  autoCheckUpdateInterval: { min: 0, max: 8760, integer: true },
   uiScale: { min: 0.8, max: 1.5 },
   speedScheduleDays: { min: 0, max: 96, integer: true },
   taskPageSize: { min: 1, max: 100, integer: true },
@@ -37,7 +36,6 @@ export const NUMERIC_CONFIG_CONSTRAINTS = {
 export type NumericConfigKey = keyof typeof NUMERIC_CONFIG_CONSTRAINTS
 
 export const NUMERIC_CONFIG_ENUM_VALUES = {
-  autoCheckUpdateInterval: [0, 24, 168, 720, 4320, 8760],
   uiScale: [0.8, 0.9, 1, 1.1, 1.25, 1.5],
   speedScheduleDays: [0, 31, 96],
 } as const satisfies Partial<Record<keyof AppConfig, readonly number[]>>

@@ -27,7 +27,6 @@ pub use engine::windows_process::prepare_install;
 mod association_cleanup;
 
 use crate::commands::power::ShutdownCancelState;
-use crate::commands::updater::{DownloadedUpdate, UpdateCancelState};
 use engine::EngineState;
 use engine::DEFAULT_RPC_PORT;
 use tauri::{Emitter, Manager};
@@ -297,7 +296,6 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(database::DatabaseState(std::sync::Arc::new(
         database::Database::unavailable(),
     )));
-    services::clipboard_watch::spawn(app.handle().clone());
     let database_app = app.handle().clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = commands::database_initialize(database_app).await {
@@ -662,8 +660,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_locale::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
+        .plugin(tauri_plugin_clipboard_manager::init());
 
     #[cfg(target_os = "linux")]
     {
@@ -710,8 +707,6 @@ pub fn run() {
         .manage(EngineState::new())
         .manage(services::media::MediaState::new())
         .manage(engine::supervisor::EngineSupervisor::new())
-        .manage(std::sync::Arc::new(UpdateCancelState::new()))
-        .manage(std::sync::Arc::new(DownloadedUpdate::new()))
         .manage(std::sync::Arc::new(ShutdownCancelState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::replace_system_config,
@@ -734,10 +729,6 @@ pub fn run() {
             commands::send_app_system_notification,
             commands::notification_access_state,
             commands::open_notification_settings,
-            commands::check_for_update,
-            commands::download_update,
-            commands::apply_update,
-            commands::cancel_update,
             commands::set_dock_visible,
             commands::minimize_to_tray,
             commands::is_autostart_launch,
@@ -838,8 +829,6 @@ pub fn run() {
             commands::float_panel_dismiss,
             commands::float_panel_present,
             commands::float_panel_start_drag,
-            commands::clipboard_baseline_wanted,
-            commands::clipboard_offer,
         ])
         // ── Window event interception ─────────────────────────────────
         //

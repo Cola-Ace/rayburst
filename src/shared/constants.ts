@@ -1,5 +1,4 @@
 /** @fileoverview Application-wide constants: themes, intervals, suffixes, limits. */
-import { version as appVersion } from '../../package.json'
 import { DEFAULT_TASK_MANUAL_ORDER, DEFAULT_TASK_SORT } from '@/composables/useTaskSort'
 import type { AppLogLevel, Aria2LogLevel, FloatWindowMode } from '@shared/types'
 import type { I18nKey } from '@shared/i18nTypes'
@@ -78,8 +77,6 @@ export const COMPLETED_RECORD_RETENTION_FOREVER = 0
 export const COMPLETED_RECORD_RETENTION_OPTIONS = [0, 1, 7, 180, 365] as const
 /** Unfinished downloads carry this suffix while the preference is on (#721). */
 export const INCOMPLETE_SUFFIX = '.ray' as const
-
-export const UPDATE_CHANNELS = ['stable', 'beta'] as const
 
 export const FLOAT_WINDOW_MODES = ['always', 'downloading', 'off'] as const satisfies readonly FloatWindowMode[]
 
@@ -218,13 +215,8 @@ export const DEFAULT_APP_CONFIG = {
   deleteFilesWhenSkipConfirm: false, // when skip-confirm is on, default to keeping files (safe)
   resumeAllWhenAppLaunched: false, // don't flood bandwidth on launch
 
-  // ── Auto Update ───────────────────────────────────────────────
-  autoCheckUpdate: true, // qBT checks every launch; security best practice
-  autoCheckUpdateInterval: 0, // 0 means every frontend startup, including lightweight restores
   /** Linux-only: WebKitGTK hardware compositing, opt-in: it freezes or blanks windows on many drivers and virtual GPUs. */
   hardwareRendering: false,
-  updateChannel: (appVersion.includes('-') ? 'beta' : 'stable') as 'stable' | 'beta',
-  lastCheckUpdateTime: 0,
 
   // ── Network & Security ────────────────────────────────────────
   rpcListenPort: ENGINE_RPC_PORT,
@@ -242,15 +234,7 @@ export const DEFAULT_APP_CONFIG = {
     username: '',
     password: '',
     bypass: '',
-    scope: ['download', 'update-app'],
-  },
-  clipboard: {
-    enable: true,
-    background: false,
-    http: true,
-    sftp: true,
-    thunder: true,
-    httpFilesOnly: true,
+    scope: ['download'],
   },
   extensionDownloadBehavior: 'confirm' as const,
   userAgent:
@@ -300,18 +284,14 @@ export const FILE_ALLOCATION_OPTIONS = ['none', 'trunc', 'prealloc', 'falloc'] a
 
 export const PROXY_SCOPES = {
   DOWNLOAD: 'download',
-  UPDATE_APP: 'update-app',
 }
 
-export const PROXY_SCOPE_OPTIONS = [PROXY_SCOPES.DOWNLOAD, PROXY_SCOPES.UPDATE_APP]
+export const PROXY_SCOPE_OPTIONS = [PROXY_SCOPES.DOWNLOAD]
 
 export const NONE_SELECTED_FILES = 'none'
 export const SELECTED_ALL_FILES = 'all'
 
-export const COMMON_RESOURCE_TAGS = ['http://', 'https://', 'sftp://']
-export const THUNDER_RESOURCE_TAGS = ['thunder://']
-
-export const RESOURCE_TAGS = [...COMMON_RESOURCE_TAGS, ...THUNDER_RESOURCE_TAGS]
+export const RESOURCE_TAGS = ['http://', 'https://', 'sftp://']
 
 /** Memory-safety guard: reject clipboard content longer than this (characters). */
 export const DETECT_RESOURCE_MAX_CHARS = 100_000

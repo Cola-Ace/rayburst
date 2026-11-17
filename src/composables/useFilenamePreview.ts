@@ -16,7 +16,7 @@ export function useFilenamePreview(
   const looking = ref(false)
   const singleUrl = computed(() => {
     const urls = normalizeUriLines(form.value.uris)
-    return urls.length === 1 && /^(?:https?|thunder):\/\//i.test(urls[0]) ? urls[0] : ''
+    return urls.length === 1 && /^(?:https?):\/\//i.test(urls[0]) ? urls[0] : ''
   })
   const clean = (name: string) => safeFilename(name.replace(/^.*[/\\]/, ''))
   const suggested = computed(() => {
@@ -55,7 +55,7 @@ export function useFilenamePreview(
     }
   }
   return {
-    /** The one HTTP or Thunder URL in the form, if there is exactly one. */
+    /** The one HTTP(S) URL in the form, if there is exactly one. */
     singleUrl,
     filename,
     /** The name to submit: exactly what was typed, extension included. */

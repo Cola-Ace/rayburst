@@ -47,7 +47,7 @@ function makeProxy(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
   return {
     mode: 'manual',
     server: 'http://127.0.0.1:7890',
-    scope: ['download', 'update-app'],
+    scope: ['download'],
     ...overrides,
   }
 }

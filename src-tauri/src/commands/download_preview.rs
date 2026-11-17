@@ -45,9 +45,9 @@ pub async fn preview_download(
     let DownloadPreviewRequest { id, url, options } = request;
     let parsed =
         url::Url::parse(&url).map_err(|error| AppError::InvalidInput(error.to_string()))?;
-    if !matches!(parsed.scheme(), "http" | "https" | "thunder") || !options.is_object() {
+    if !matches!(parsed.scheme(), "http" | "https") || !options.is_object() {
         return Err(AppError::InvalidInput(
-            "A download preview takes an HTTP or Thunder URL and its options".into(),
+            "A download preview takes an HTTP(S) URL and its options".into(),
         ));
     }
     let state = app.state::<DownloadPreviewState>();
@@ -77,11 +77,6 @@ pub async fn preview_download(
 }
 
 pub(crate) fn summarize_url_for_log(value: &str) -> String {
-    let lower = value.to_lowercase();
-    if lower.starts_with("thunder://") {
-        return format!("scheme=thunder length={}", value.len());
-    }
-
     match url::Url::parse(value) {
         Ok(parsed) => {
             let scheme = parsed.scheme();

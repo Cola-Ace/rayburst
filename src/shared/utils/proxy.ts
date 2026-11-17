@@ -26,35 +26,6 @@ export function proxySwitchValueToMode(enabled: boolean, server = ''): EnginePro
   return server.trim() ? 'manual' : 'system'
 }
 
-// ── URL helpers ─────────────────────────────────────────────────────
-
-export interface ProxyCredentials {
-  username?: string
-  password?: string
-}
-
-export interface ProxyEndpoint extends ProxyCredentials {
-  server?: string
-}
-
-export function buildProxyUrlWithCredentials(proxy: ProxyEndpoint): string | null {
-  const server = proxy.server?.trim()
-  if (!server) return null
-  const username = proxy.username?.trim() ?? ''
-  const password = proxy.password ?? ''
-  if (!username && !password) return server
-
-  const parseTarget = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(server) ? server : `http://${server}`
-  try {
-    const url = new URL(parseTarget)
-    url.username = username
-    url.password = password
-    return url.toString()
-  } catch {
-    return server
-  }
-}
-
 export function hasProxyScope(proxy: Pick<ProxyConfig, 'scope'>, scope: string): boolean {
   return Array.isArray(proxy.scope) && proxy.scope.includes(scope)
 }
@@ -89,17 +60,6 @@ export function isValidAria2ProxyUrl(url: string): boolean {
   }
 
   return false
-}
-
-// ── App-side scoped proxy resolution ────────────────────────────────
-
-export type AppProxyScope = (typeof PROXY_SCOPES)[keyof typeof PROXY_SCOPES]
-
-export function resolveAppProxyUrl(proxy: Partial<ProxyConfig> | undefined, scope: AppProxyScope): string | null {
-  if (!proxy || !Array.isArray(proxy.scope) || !proxy.scope.includes(scope)) return null
-  if (proxy.mode === 'system') return SYSTEM_PROXY
-  if (proxy.mode !== 'manual' || !proxy.server?.trim()) return null
-  return buildProxyUrlWithCredentials(proxy)
 }
 
 // ── aria2 engine option assembly ────────────────────────────────────

@@ -32,17 +32,13 @@ describe('association settings', () => {
     invoke.mockResolvedValue({ state: 'error', handler: null, error: 'native failure' })
     const wrapper = mount(PreferenceAssociations)
     await flushPromises()
-    expect(wrapper.text()).toContain('preferences.protocol-thunder')
     expect(wrapper.text()).toContain('Rayburst [rayburst://]')
     const buttons = wrapper.findAll('button').filter((button) => button.attributes('disabled') === undefined)
-    expect(buttons.map((button) => button.text())).toEqual(['app.retry', 'app.retry'])
+    expect(buttons.map((button) => button.text())).toEqual(['app.retry'])
     invoke.mockClear()
     await buttons[0]!.trigger('click')
     await flushPromises()
-    expect(invoke.mock.calls).toEqual([
-      ['get_association_status', { protocol: 'thunder' }],
-      ['get_association_status', { protocol: 'rayburst' }],
-    ])
+    expect(invoke.mock.calls).toEqual([['get_association_status', { protocol: 'rayburst' }]])
     wrapper.unmount()
   })
 })

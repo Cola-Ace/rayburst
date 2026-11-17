@@ -7,7 +7,6 @@ import {
   APP_LOG_LEVELS,
   ARIA2_LOG_LEVELS,
   PROXY_SCOPE_OPTIONS,
-  UPDATE_CHANNELS,
   FLOAT_WINDOW_MODES,
 } from '@shared/constants'
 import {
@@ -18,7 +17,7 @@ import {
 } from '@shared/configConstraints'
 import { getAllowedColorSchemeIds, normalizeCustomColorScheme } from '@shared/utils/colorSchemeConfig'
 import { normalizeProxyMode } from '@shared/utils/proxy'
-import type { AppConfig, ClipboardConfig, ProxyConfig } from '@shared/types'
+import type { AppConfig, ProxyConfig } from '@shared/types'
 import { normalizeSiteRules } from './siteRules'
 import { normalizeFileCategory } from '@shared/utils/fileCategory'
 import {
@@ -107,19 +106,6 @@ function normalizeProxy(value: unknown, repairs: string[]): ProxyConfig {
   }
 }
 
-function normalizeClipboard(value: unknown): ClipboardConfig {
-  const defaults = DEFAULT_APP_CONFIG.clipboard
-  const saved = isRecord(value) ? value : {}
-  return {
-    enable: typeof saved.enable === 'boolean' ? saved.enable : defaults.enable,
-    background: typeof saved.background === 'boolean' ? saved.background : defaults.background,
-    http: typeof saved.http === 'boolean' ? saved.http : defaults.http,
-    sftp: typeof saved.sftp === 'boolean' ? saved.sftp : defaults.sftp,
-    thunder: typeof saved.thunder === 'boolean' ? saved.thunder : defaults.thunder,
-    httpFilesOnly: typeof saved.httpFilesOnly === 'boolean' ? saved.httpFilesOnly : defaults.httpFilesOnly,
-  }
-}
-
 function normalizeTaskManualOrder(value: unknown, repairs: string[]): TaskManualOrderConfig {
   const saved = isRecord(value) ? value : {}
   const normalizeList = (key: keyof TaskManualOrderConfig): string[] => {
@@ -184,7 +170,6 @@ function normalizeScalarValues(config: Record<string, unknown>, repairs: string[
   const customColorScheme = normalizeCustomColorScheme(config.customColorScheme)
   if (config.customColorScheme !== customColorScheme) repairs.push('customColorScheme')
   config.customColorScheme = customColorScheme
-  repairEnum(config, 'updateChannel', UPDATE_CHANNELS, DEFAULT_APP_CONFIG.updateChannel, repairs)
   repairEnum(
     config,
     'extensionDownloadBehavior',
@@ -294,7 +279,6 @@ export function hydrateAppConfig(saved?: Partial<AppConfig> | null): HydratedApp
   const record = merged as Record<string, unknown>
 
   merged.proxy = normalizeProxy(input?.proxy ?? merged.proxy, repairs)
-  merged.clipboard = normalizeClipboard(input?.clipboard ?? merged.clipboard)
   merged.taskManualOrder = normalizeTaskManualOrder(input?.taskManualOrder ?? merged.taskManualOrder, repairs)
   merged.taskSort = normalizeTaskSort(input?.taskSort ?? merged.taskSort, repairs)
 

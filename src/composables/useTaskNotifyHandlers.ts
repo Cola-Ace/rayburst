@@ -86,6 +86,6 @@ export function handleTaskStart(taskNames: string[], deps: StartNotifyDeps): voi
   deps.messageInfo(body)
   logger.info('TaskNotify.start', 'download_notification_started', {
     count: taskNames.length,
-    first: /^(?:https?|sftp|thunder):/i.test(firstName) ? summarizeExternalInput(firstName) : firstName,
+    first: /^(?:https?|sftp):/i.test(firstName) ? summarizeExternalInput(firstName) : firstName,
   })
 }

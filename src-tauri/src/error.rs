@@ -31,9 +31,6 @@ pub enum AppError {
     /// Requested resource not found.
     #[error("Not found: {0}")]
     NotFound(String),
-    /// Auto-updater check or install failure.
-    #[error("Updater error: {0}")]
-    Updater(String),
     /// Protocol handler registration/query error.
     #[error("Protocol error: {0}")]
     Protocol(String),

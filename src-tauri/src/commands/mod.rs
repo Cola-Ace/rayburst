@@ -15,7 +15,6 @@ pub mod protocol;
 pub mod proxy;
 pub mod runtime_config;
 pub mod ui;
-pub mod updater;
 
 pub use aria2::*;
 pub use autostart::*;
@@ -34,4 +33,3 @@ pub use protocol::*;
 pub use proxy::*;
 pub use runtime_config::*;
 pub use ui::*;
-pub use updater::*;

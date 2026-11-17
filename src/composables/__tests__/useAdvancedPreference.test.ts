@@ -17,11 +17,10 @@ describe('Advanced preference ownership', () => {
 })
 
 describe('General preference ownership', () => {
-  it('persists the flattened clipboard switches as the clipboard object', () => {
+  it('persists general settings independently of extension and network settings', () => {
     const form = buildGeneralForm(createDefaultAppConfig())
-    const stored = transformGeneralForStore({ ...form, clipboardSftp: false })
-    expect(stored.clipboard).toMatchObject({ sftp: false })
-    expect(stored).not.toHaveProperty('clipboardSftp')
+    const stored = transformGeneralForStore(form)
+    expect(stored).not.toHaveProperty('clipboard')
     expect(stored).not.toHaveProperty('extensionDownloadBehavior')
     expect(stored.taskNotification).toBe(form.taskNotification)
     expect(stored).not.toHaveProperty('proxy')

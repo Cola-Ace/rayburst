@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { logger } from '@shared/logger'
 import { getErrorMessage } from '@shared/utils/errorMessage'
 
-export const protocolKeys = ['thunder', 'rayburst'] as const
+export const protocolKeys = ['rayburst'] as const
 export type ProtocolKey = (typeof protocolKeys)[number]
 export interface AssociationStatus {
   state: 'current' | 'other' | 'unassigned' | 'unavailable' | 'error'

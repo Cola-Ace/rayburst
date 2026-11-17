@@ -111,7 +111,7 @@ pub async fn get_association_status(
 }
 
 fn validate_protocol(protocol: &str) -> Result<(), AppError> {
-    if matches!(protocol, "rayburst" | "thunder") {
+    if protocol == "rayburst" {
         Ok(())
     } else {
         Err(AppError::Protocol("Unsupported protocol".into()))
@@ -120,30 +120,22 @@ fn validate_protocol(protocol: &str) -> Result<(), AppError> {
 
 #[cfg(windows)]
 pub(crate) async fn protocol_diagnostics(_app: &AppHandle) -> serde_json::Value {
-    let mut protocols = serde_json::Map::new();
-    for scheme in ["rayburst", "thunder"] {
-        let snapshot = match windows::handler(scheme) {
-            Ok(handler) => serde_json::json!({
-                "handler": handler.path,
-                "unavailable": handler.unavailable,
-                "currentApplication": windows::is_default(scheme).ok(),
-            }),
-            Err(error) => serde_json::json!({ "error": error.to_string() }),
-        };
-        protocols.insert(scheme.into(), snapshot);
-    }
-    serde_json::Value::Object(protocols)
+    let snapshot = match windows::handler("rayburst") {
+        Ok(handler) => serde_json::json!({
+            "handler": handler.path,
+            "unavailable": handler.unavailable,
+            "currentApplication": windows::is_default("rayburst").ok(),
+        }),
+        Err(error) => serde_json::json!({ "error": error.to_string() }),
+    };
+    serde_json::json!({ "rayburst": snapshot })
 }
 
 #[cfg(target_os = "macos")]
 pub(crate) async fn protocol_diagnostics(app: &AppHandle) -> serde_json::Value {
-    let mut associations = serde_json::Map::new();
-    for scheme in ["rayburst", "thunder"] {
-        let snapshot = match get_association_status(app.clone(), scheme.into()).await {
-            Ok(status) => serde_json::json!(status),
-            Err(error) => serde_json::json!({ "error": error.to_string() }),
-        };
-        associations.insert(scheme.into(), snapshot);
-    }
-    serde_json::Value::Object(associations)
+    let snapshot = match get_association_status(app.clone(), "rayburst".into()).await {
+        Ok(status) => serde_json::json!(status),
+        Err(error) => serde_json::json!({ "error": error.to_string() }),
+    };
+    serde_json::json!({ "rayburst": snapshot })
 }

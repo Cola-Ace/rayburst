@@ -142,30 +142,8 @@ export interface SystemProxyInfo {
   isSocks: boolean
 }
 
-export type UpdateChannel = 'stable' | 'beta'
-
 /** When the floating window shows: always, only while files download, or never. */
 export type FloatWindowMode = 'always' | 'downloading' | 'off'
-export type ResolvedUpdateChannel = UpdateChannel
-
-/** Clipboard auto-detection filter: controls which protocol families
- *  trigger the "new task" dialog when a URL is detected in the clipboard. */
-export interface ClipboardConfig {
-  /** Master switch — when false, clipboard detection is fully disabled. */
-  enable: boolean
-  /** Links copied while Rayburst is in the background open the add window at
-   *  once, not when its window is next focused (#793). */
-  background: boolean
-  /** Detect http:// and https:// URLs. */
-  http: boolean
-  /** Detect sftp:// URLs. */
-  sftp: boolean
-
-  /** Detect thunder:// (迅雷) links. */
-  thunder: boolean
-  /** Ignore HTTP(S) links whose path names a web page rather than a file. */
-  httpFilesOnly: boolean
-}
 
 /** A file category rule mapping extensions to a download directory. */
 export type FileCategoryUrlPatternMode = 'wildcard' | 'regex'
@@ -263,7 +241,6 @@ export interface AppConfig {
   fileCategories: FileCategory[]
 
   openAtLogin: boolean
-  autoCheckUpdate: boolean
   autoHideWindow: boolean
   minimizeToTrayOnClose: boolean
   quitOnClose: boolean
@@ -297,16 +274,13 @@ export interface AppConfig {
   tempFilesDir: string
   cookie: string
   proxy: ProxyConfig
-  clipboard: ClipboardConfig
   /** One policy owns confirmation and window activation for extension downloads. */
   extensionDownloadBehavior: 'confirm' | 'background' | 'show'
 
   historyDirectories: string[]
   favoriteDirectories: string[]
-  lastCheckUpdateTime: number
   /** Linux-only: opt into WebKitGTK hardware compositing. */
   hardwareRendering: boolean
-  updateChannel: UpdateChannel
   runMode: string
   userAgent: string
   userAgentProfiles: UserAgentProfile[]
@@ -339,7 +313,6 @@ export interface AppConfig {
   /** When true, aria2 applies the remote server's Last-Modified timestamp
    *  to the local file instead of using the download-completion time. */
   remoteTime: boolean
-  autoCheckUpdateInterval: number
   autoDeleteStaleRecords: boolean
   clearCompletedOnExit: boolean
   /** Completed history retention in days. 0 means keep forever. */
@@ -444,15 +417,6 @@ export interface UriFileCategoryPolicy {
 export interface TaskOptionParams {
   gid: string
   options: Aria2EngineOptions
-}
-
-/** Update metadata returned by the Rust `check_for_update` command. */
-export interface TauriUpdate {
-  version: string
-  body: string | null
-  date: string | null
-  channel: ResolvedUpdateChannel
-  requestedChannel: UpdateChannel
 }
 
 // ── Batch Add Task ──────────────────────────────────────────────────

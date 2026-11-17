@@ -207,9 +207,7 @@ export function normalizeUriLines(text: string): string[] {
 }
 
 /**
- * Merge URI lines for display/editing without decoding protocol wrappers.
- * Submission paths use normalizeUriLines(); Thunder links stay wrapped because
- * Aria2 Next owns Thunder parsing.
+ * Merge URI lines for display/editing, trimming blanks and deduplicating exact lines.
  */
 export function mergeRawUriLines(existingText: string, incoming: string[]): string {
   const existing = existingText.split('\n').map(normalizeRawUriLine).filter(Boolean)

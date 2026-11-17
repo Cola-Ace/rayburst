@@ -21,8 +21,7 @@ import aria2Api from './api/aria2'
 import { logger } from '@shared/logger'
 import { getErrorMessage } from '@shared/utils/errorMessage'
 import { resolveUserVisibleDownloadDir, shouldPersistResolvedDownloadDir } from '@shared/utils/userVisibleDirectory'
-import { getUpdateProxy } from '@/composables/useUpdateFlow'
-import type { AppConfig, TauriUpdate } from '@shared/types'
+import type { AppConfig } from '@shared/types'
 import App from './App.vue'
 import AppProviders from './AppProviders.vue'
 import AddWindow from './AddWindow.vue'
@@ -150,31 +149,6 @@ if (isFloatWindow) {
   const engineStore = useEngineStore()
   const historyStore = useHistoryStore()
 
-  async function autoCheckForUpdate() {
-    const config = preferenceStore.config
-    if (config.autoCheckUpdate === false) return
-
-    const intervalHours = Number(config.autoCheckUpdateInterval ?? 0)
-    if (Number.isFinite(intervalHours) && intervalHours > 0) {
-      const lastCheck = Number(config.lastCheckUpdateTime) || 0
-      const intervalMs = intervalHours * 3_600_000
-      if (Date.now() - lastCheck < intervalMs) return
-    }
-
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const channel = config.updateChannel || 'stable'
-      const proxyServer = getUpdateProxy(config.proxy)
-      const update = await invoke<TauriUpdate | null>('check_for_update', { channel, proxy: proxyServer })
-      if (update) {
-        appStore.pendingUpdate = update
-      }
-      preferenceStore.updateAndSave({ lastCheckUpdateTime: Date.now() })
-    } catch (e) {
-      logger.debug('Updater', 'update_check_failed', { reason: getErrorMessage(e) })
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Startup orchestration
   //
@@ -184,8 +158,7 @@ if (isFloatWindow) {
   //  Phase 1 (critical path)   – loadPreference → locale → window.show()
   //  Phase 2 (engine, async)   – rpcSecret → save config → EngineSupervisor
   //  Phase 3 (non-critical)    – autostart, protocol sync (parallel)
-  //  Phase 4 (deferred)        – update check, FS warmup,
-  //                              clipboard monitor
+  //  Phase 4 (deferred)        – history maintenance, FS warmup
   // ---------------------------------------------------------------------------
 
   /** Persists the runtime configuration and delegates startup to EngineSupervisor. */
@@ -310,7 +283,6 @@ if (isFloatWindow) {
     }
 
     // ── Phase 4: deferred non-critical tasks ───────────────────────────────
-    autoCheckForUpdate()
 
     // Initialize download history database, then schedule lightweight cleanup.
     historyStore
@@ -379,33 +351,6 @@ if (isFloatWindow) {
         logger.debug('main.lightweightAutostart', e)
       }
     }
-
-    // Only links copied after launch count, not what the clipboard held before (#738).
-    // The process remembers what was offered, so a page recreated from the tray
-    // or a link already taken in the add window is not offered again (#751).
-    const { invoke: invokeCommand } = await import('@tauri-apps/api/core')
-    if (await invokeCommand<boolean>('clipboard_baseline_wanted').catch(() => false)) {
-      if (preferenceStore.config.clipboard?.enable) {
-        const { readText } = await import('@tauri-apps/plugin-clipboard-manager')
-        const text = ((await readText().catch(() => '')) || '').trim()
-        if (text) await invokeCommand('clipboard_offer', { text }).catch(() => {})
-      }
-    }
-    getCurrentWindow().onFocusChanged(async ({ payload: focused }) => {
-      if (!focused) return
-      const clipboardConfig = preferenceStore.config.clipboard
-      if (!clipboardConfig?.enable) return
-      try {
-        const { readText } = await import('@tauri-apps/plugin-clipboard-manager')
-        const text = ((await readText()) || '').trim()
-        if (!text) return
-        const { detectResource, shouldIgnoreClipboardTextForAutoDetect } = await import('@shared/utils')
-        if (shouldIgnoreClipboardTextForAutoDetect(text) || !detectResource(text, clipboardConfig)) return
-        if (await invokeCommand<boolean>('clipboard_offer', { text })) appStore.showAddTaskDialog()
-      } catch (e) {
-        logger.debug('Main.clipboardMonitor', e)
-      }
-    })
   }
 
   void bootstrapMainWindow().catch(async (e) => {

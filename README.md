@@ -41,7 +41,7 @@ Every transition and micro-interaction has been carefully tuned to follow [Mater
 
 ## Features
 
-- **Multi-protocol downloads** — HTTP, HTTPS, FTP, SFTP, and Thunder links
+- **Multi-protocol downloads** — HTTP, HTTPS, FTP, and SFTP links
 - **HLS and DASH** — Native track selection, subtitles, live recording, resumable media downloads and MP4/MKV output. See [media downloads](docs/MEDIA.md).
 - **Browser extension integration** — Embedded Extension API with independent authentication, download confirmation, smart auto-submit, filename hints, referer/cookie forwarding, and real-time controls ([Rayburst Connect](https://github.com/AnInsomniacy/rayburst-connect))
 - **Safe filename handling** — Content-Disposition, RFC 2047, non-UTF-8, percent-encoded, and extensionless URL resolution with path traversal sanitization
@@ -52,7 +52,6 @@ Every transition and micro-interaction has been carefully tuned to follow [Mater
 - **Lightweight mode** — Destroys every WebView, the floating orb included, on minimize-to-tray while Rust keeps the engine, task monitor, notifications, history, and extension routing alive
 - **Notifications and power options** — Native task start/complete/failure notifications, keep-awake during downloads, and optional shutdown after completion
 - **Network controls** — Scoped proxy support for downloads and app updates, plus system proxy detection
-- **Auto-update channels** — Stable, Beta, and Latest Across Channels policies with separate download and install phases
 - **Diagnostics** — Structured logs, exportable diagnostic ZIPs, database integrity checks and Linux GPU rendering fallback
 - **Personalization** — Light/dark/system theme, 10 color schemes, 27 languages, and first-launch system language detection
 - **Native desktop app** — Tauri 2 with a Rust backend
@@ -120,7 +119,7 @@ flatpak remote-add --if-not-exists flatpark https://dl.flatpark.org/flatpark.fla
 flatpak install flatpark dev.aninsomniacy.rayburst
 ```
 
-Update with `flatpak update dev.aninsomniacy.rayburst`; the in-app updater cannot update this package. Start Rayburst manually before connecting Rayburst Connect; the package does not register the browser's native-messaging host. See the [package page](https://flatpark.org/apps/dev.aninsomniacy.rayburst/) for sandbox permissions and packaging support.
+Update with `flatpak update dev.aninsomniacy.rayburst`. Start Rayburst manually before connecting Rayburst Connect; the package does not register the browser's native-messaging host. See the [package page](https://flatpark.org/apps/dev.aninsomniacy.rayburst/) for sandbox permissions and packaging support.
 
 ## FAQ
 
@@ -147,8 +146,6 @@ This removes only Gatekeeper's quarantine attribute. Run it again after each upg
 Rayburst relies on [Aria2 Next](https://github.com/AnInsomniacy/aria2-next) as its download engine and launches it through a bundled `aria2-next` sidecar process at runtime. The sidecar binaries are built and released from the aria2-next repository for all 6 supported desktop targets. This architecture means:
 
 - The **Aria2 Next sidecar binary must exist alongside the main executable** — it cannot be embedded into a single `.exe`.
-- **Deep links** (`thunder://`, `rayburst://`) require Windows registry entries that only an installer can configure.
-- The **auto-updater** needs a known installation path to replace files in place.
 
 These are fundamental constraints of the Tauri sidecar model and the Windows operating system, not limitations we can work around. Notable Tauri projects like [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev) (80k+ stars) previously shipped portable builds but [discontinued them](https://clash-verge.com/) due to the same set of issues.
 

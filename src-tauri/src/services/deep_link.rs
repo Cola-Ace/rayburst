@@ -58,16 +58,9 @@ pub fn filter_external_input_args(args: &[String]) -> Vec<String> {
                 return false;
             }
             let lower = arg.to_lowercase();
-            [
-                "http://",
-                "https://",
-                "ftp://",
-                "sftp://",
-                "thunder://",
-                "rayburst://",
-            ]
-            .iter()
-            .any(|scheme| lower.starts_with(scheme))
+            ["http://", "https://", "ftp://", "sftp://", "rayburst://"]
+                .iter()
+                .any(|scheme| lower.starts_with(scheme))
         })
         .cloned()
         .collect()

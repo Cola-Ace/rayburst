@@ -18,11 +18,8 @@ describe('native associations', () => {
     mockInvoke.mockResolvedValue(snapshot('other'))
     const associations = useProtocolHandlers()
     await associations.refreshAll()
-    expect(mockInvoke.mock.calls).toEqual([
-      ['get_association_status', { protocol: 'thunder' }],
-      ['get_association_status', { protocol: 'rayburst' }],
-    ])
-    expect(associations.status.value['thunder']?.state).toBe('other')
+    expect(mockInvoke.mock.calls).toEqual([['get_association_status', { protocol: 'rayburst' }]])
+    expect(associations.status.value['rayburst']?.state).toBe('other')
   })
 
   it('coalesces refreshes until the current queries complete', async () => {
@@ -33,17 +30,15 @@ describe('native associations', () => {
           complete = resolve
         }),
       )
-      .mockResolvedValueOnce(snapshot('unassigned'))
       .mockResolvedValue(snapshot('current'))
     const associations = useProtocolHandlers()
     const operation = associations.refreshAll()
     await associations.refreshAll()
-    expect(mockInvoke).toHaveBeenCalledTimes(2)
+    expect(mockInvoke).toHaveBeenCalledTimes(1)
     complete(snapshot('other'))
     await operation
-    expect(mockInvoke).toHaveBeenCalledTimes(4)
+    expect(mockInvoke).toHaveBeenCalledTimes(2)
     expect(associations.busy.value).toBe(false)
-    expect(associations.status.value.thunder?.state).toBe('current')
     expect(associations.status.value.rayburst?.state).toBe('current')
   })
 })

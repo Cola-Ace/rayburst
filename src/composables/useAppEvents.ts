@@ -550,7 +550,7 @@ export function useAppEvents(deps: AppEventsDeps): AppEventsReturn {
         const argv = event.payload
         const urls = argv.filter((a) => {
           const lower = a.toLowerCase()
-          return !a.startsWith('-') && (lower.includes('://') || lower.startsWith('thunder://'))
+          return !a.startsWith('-') && lower.includes('://')
         })
         if (urls.length > 0) {
           logger.info('SingleInstance', `forwarding ${urls.length} URL(s) from second instance`)

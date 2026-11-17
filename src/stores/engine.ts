@@ -32,8 +32,6 @@ export type EngineOperationCause =
   | 'failureRetry'
   | 'sessionRecovery'
   | 'runtimeCrash'
-  | 'updateInstall'
-  | 'updateInstallFailed'
   | 'appRelaunch'
   | 'appExit'
   | 'userCancelled'

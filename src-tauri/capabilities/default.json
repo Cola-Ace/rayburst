@@ -41,7 +41,6 @@
       ]
     },
     "clipboard-manager:allow-read-text",
-    "updater:default",
     "deep-link:default",
     "locale:default",
     "log:default"

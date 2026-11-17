@@ -497,16 +497,6 @@ describe('submitManualUris', () => {
     })
   })
 
-  it('passes Thunder links to the engine for manual URI tasks', async () => {
-    const thunder = 'thunder://' + btoa('AAhttps://example.com/file.zipZZ')
-
-    await submitManualUris({ ...baseForm, uris: thunder }, mockTaskStore)
-
-    const call = (mockTaskStore.addUri as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(call.uris).toEqual([thunder])
-    expect(call.outs).toEqual([''])
-  })
-
   it('submits aria2 input-file out options as separate task options', async () => {
     await submitManualUris(
       {

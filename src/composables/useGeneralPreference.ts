@@ -14,9 +14,6 @@ export interface GeneralForm {
   sidebarTaskCounts: boolean
   iecSizeUnits: boolean
   systemTitleBar: boolean
-  autoCheckUpdate: boolean
-  autoCheckUpdateInterval: number
-  updateChannel: AppConfig['updateChannel']
   showProgressBar: boolean
   floatWindow: AppConfig['floatWindow']
   floatWindowInLightweight: boolean
@@ -31,13 +28,6 @@ export interface GeneralForm {
   hideDockOnMinimize: boolean
   traySpeedometer: boolean
   lightweightMode: boolean
-  // Links picked up from the clipboard.
-  clipboardEnable: boolean
-  clipboardBackground: boolean
-  clipboardHttp: boolean
-  clipboardSftp: boolean
-  clipboardThunder: boolean
-  clipboardHttpFilesOnly: boolean
   // Notifications
   taskNotification: boolean
   notifyOnStart: boolean
@@ -62,9 +52,6 @@ export function buildGeneralForm(config: AppConfig): GeneralForm {
     sidebarTaskCounts: config.sidebarTaskCounts,
     iecSizeUnits: config.iecSizeUnits,
     systemTitleBar: config.systemTitleBar,
-    autoCheckUpdate: config.autoCheckUpdate,
-    autoCheckUpdateInterval: config.autoCheckUpdateInterval,
-    updateChannel: config.updateChannel,
     showProgressBar: config.showProgressBar,
     floatWindow: config.floatWindow,
     floatWindowInLightweight: config.floatWindowInLightweight,
@@ -79,12 +66,6 @@ export function buildGeneralForm(config: AppConfig): GeneralForm {
     hideDockOnMinimize: config.hideDockOnMinimize,
     traySpeedometer: config.traySpeedometer,
     lightweightMode: config.lightweightMode,
-    clipboardEnable: config.clipboard.enable,
-    clipboardBackground: config.clipboard.background,
-    clipboardHttp: config.clipboard.http,
-    clipboardSftp: config.clipboard.sftp,
-    clipboardThunder: config.clipboard.thunder,
-    clipboardHttpFilesOnly: config.clipboard.httpFilesOnly,
     taskNotification: config.taskNotification,
     notifyOnStart: config.notifyOnStart,
     notifyOnComplete: config.notifyOnComplete,
@@ -92,26 +73,6 @@ export function buildGeneralForm(config: AppConfig): GeneralForm {
   }
 }
 
-/** Folds the flat clipboard fields back into the stored `clipboard` object. */
 export function transformGeneralForStore(form: GeneralForm): Partial<AppConfig> {
-  const {
-    clipboardEnable,
-    clipboardBackground,
-    clipboardHttp,
-    clipboardSftp,
-    clipboardThunder,
-    clipboardHttpFilesOnly,
-    ...rest
-  } = form
-  return {
-    ...rest,
-    clipboard: {
-      enable: clipboardEnable,
-      background: clipboardBackground,
-      http: clipboardHttp,
-      sftp: clipboardSftp,
-      thunder: clipboardThunder,
-      httpFilesOnly: clipboardHttpFilesOnly,
-    },
-  }
+  return { ...form }
 }

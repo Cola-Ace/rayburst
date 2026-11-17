@@ -63,34 +63,6 @@ pub struct RuntimeConfig {
     /// When the floating window with speed and progress stays on top
     /// (#669, #718, #726).
     pub float_window: super::float_window::Mode,
-    /// Which copied links open the add window.
-    pub clipboard: ClipboardConfig,
-}
-
-/// The `clipboard` preferences; see `ClipboardConfig` in the frontend.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct ClipboardConfig {
-    pub enable: bool,
-    /// Links copied in other applications open the add window at once (#793).
-    pub background: bool,
-    pub http: bool,
-    pub sftp: bool,
-    pub thunder: bool,
-    pub http_files_only: bool,
-}
-
-impl Default for ClipboardConfig {
-    fn default() -> Self {
-        Self {
-            enable: true,
-            background: false,
-            http: true,
-            sftp: true,
-            thunder: true,
-            http_files_only: true,
-        }
-    }
 }
 
 impl Default for RuntimeConfig {
@@ -123,7 +95,6 @@ impl Default for RuntimeConfig {
             notification_click_action: "reveal".into(),
             remove_completed_records: false,
             float_window: super::float_window::Mode::Off,
-            clipboard: ClipboardConfig::default(),
         }
     }
 }

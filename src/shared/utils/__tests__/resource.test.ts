@@ -1,17 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { detectResource } from '../resource'
 import { DETECT_RESOURCE_MAX_CHARS, DETECT_RESOURCE_MAX_LINES } from '@shared/constants'
-import type { ClipboardConfig } from '@shared/types'
-
-const allProtocols: ClipboardConfig = {
-  enable: true,
-  background: false,
-  http: true,
-  sftp: true,
-  thunder: true,
-  httpFilesOnly: false,
-}
-
 describe('Resource detection contract', () => {
   it.each(['https://example.com/file.zip', 'sftp://example.com/file.iso'])(
     'accepts supported resource %s',
@@ -26,6 +15,7 @@ describe('Resource detection contract', () => {
     '[link](https://example.com)',
     'http://',
     'myapp://open?id=123',
+    'thunder://QUFodHRwczovL2V4YW1wbGUuY29tL2ZpbGUuemlwWlo=',
   ])('rejects non-resource content %s', (content) => {
     expect(detectResource(content)).toBe(false)
   })
@@ -39,7 +29,7 @@ describe('Resource detection contract', () => {
     expect(detectResource(content)).toBe(true)
   })
 
-  it('enforces clipboard input line and character limits', () => {
+  it('enforces resource input line and character limits', () => {
     const tooManyLines = Array.from(
       { length: DETECT_RESOURCE_MAX_LINES + 1 },
       (_, index) => `https://example.com/${index}`,
@@ -48,26 +38,8 @@ describe('Resource detection contract', () => {
     expect(detectResource(`https://example.com/${'a'.repeat(DETECT_RESOURCE_MAX_CHARS)}`)).toBe(false)
   })
 
-  it('honors the master and per-protocol clipboard switches', () => {
-    expect(detectResource('https://example.com/file.zip', { ...allProtocols, enable: false })).toBe(false)
-    expect(detectResource('https://example.com/file.zip', { ...allProtocols, http: false })).toBe(false)
-    expect(detectResource('magnet:?xt=urn:btih:abc123', allProtocols)).toBe(false)
-    expect(detectResource('d8988e034cb5de79d319242e3365bf30a7741a6e', allProtocols)).toBe(false)
-  })
-
-  it('ignores links to web pages when asked to', () => {
-    const files = { ...allProtocols, httpFilesOnly: true }
-    expect(detectResource('https://example.com/file.zip?token=1', files)).toBe(true)
-    expect(detectResource('https://example.com/news/article', files)).toBe(false)
-    expect(detectResource('https://example.com/', files)).toBe(false)
-    expect(detectResource('https://example.com/index.php', files)).toBe(false)
-    expect(detectResource('https://example.com/a.iso\nhttps://example.com/about', files)).toBe(false)
-    expect(detectResource('magnet:?xt=urn:btih:abc123', files)).toBe(false)
-    expect(detectResource('https://example.com/news/article', allProtocols)).toBe(true)
-  })
-
   it('keeps valid multi-line aria2 input while rejecting mixed prose', () => {
-    expect(detectResource('https://example.com/index.html\n  out=index.html', allProtocols)).toBe(true)
-    expect(detectResource('download this file\nhttps://example.com/file.zip', allProtocols)).toBe(false)
+    expect(detectResource('https://example.com/index.html\n  out=index.html')).toBe(true)
+    expect(detectResource('download this file\nhttps://example.com/file.zip')).toBe(false)
   })
 })

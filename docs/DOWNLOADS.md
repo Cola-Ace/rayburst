@@ -96,7 +96,7 @@ Optional fields are `finalUrl`, `referer`, `cookie`, `userAgent`, `filename`,
 `filenameSource` (`browser` or `suggested`, default `suggested`), `requestHeaders`
 (`{name,value}` pairs) and, for downloads the browser holds, `verify` with the MIME
 type and size the browser received, and `ack` (`final`, the default, or `early`).
-Supported inputs are HTTP(S), FTP, SFTP and Thunder.
+Supported inputs are HTTP(S), FTP and SFTP.
 
 The browser keeps holding its download until the answer, and only the answer
 decides who downloads it:
@@ -296,8 +296,8 @@ its sidecars, and waits for native process handles to signal exit. It does not k
 other installations by executable name. Normal application exit still saves the
 session through the existing supervisor.
 
-Before restoring the queue, the desktop retains only HTTP, HTTPS, FTP, SFTP and
-supported Thunder downloads. When it excludes unsupported entries, it keeps the
+Before restoring the queue, the desktop retains only HTTP, HTTPS, FTP and SFTP
+downloads. When it excludes unsupported entries, it keeps the
 original queue in a `download-session-*.bak` file beside `download.session`.
 Downloaded metadata files are saved as ordinary files.
 

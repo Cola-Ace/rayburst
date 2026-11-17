@@ -21,9 +21,8 @@ describe('normalizeUriLines', () => {
         https://b.example/file.zip
 
         https://a.example/file
-        thunder://foo
       `),
-    ).toEqual(['https://a.example/file', 'https://b.example/file.zip', 'thunder://foo'])
+    ).toEqual(['https://a.example/file', 'https://b.example/file.zip'])
   })
 
   it('handles multiline payload text exactly like a textarea source', () => {
@@ -41,21 +40,6 @@ describe('normalizeUriLines', () => {
   it('does NOT convert strings of wrong length (41 chars)', () => {
     const long = 'd8988e034cb5de79d319242e3365bf30a7741a6ef'
     expect(normalizeUriLines(long)).toEqual([long])
-  })
-
-  it('keeps Thunder links wrapped for engine parsing', () => {
-    const thunder = 'thunder://' + btoa('AAhttps://example.com/file.zipZZ')
-    expect(normalizeUriLines(thunder)).toEqual([thunder])
-  })
-
-  it('keeps mixed-case Thunder schemes wrapped for engine parsing', () => {
-    const thunder = 'Thunder://' + btoa('AAhttps://example.com/file.zipZZ')
-    expect(normalizeUriLines(thunder)).toEqual([thunder])
-  })
-
-  it('deduplicates Thunder links by exact normalized line', () => {
-    const thunder = 'thunder://' + btoa('AAhttps://example.com/file.zipZZ')
-    expect(normalizeUriLines(`${thunder}\n${thunder}`)).toEqual([thunder])
   })
 })
 
@@ -161,10 +145,9 @@ describe('input file out paths', () => {
 })
 
 describe('mergeRawUriLines', () => {
-  it('keeps Thunder links raw while still trimming blanks and deduplicating exact lines', () => {
-    const thunder = 'thunder://' + btoa('AAhttps://example.com/file.zipZZ')
-
-    expect(mergeRawUriLines('', [` ${thunder} \n\n${thunder}`])).toBe(thunder)
+  it('trims blanks and deduplicates exact lines', () => {
+    const uri = 'https://example.com/file.zip'
+    expect(mergeRawUriLines('', [` ${uri} \n\n${uri}`])).toBe(uri)
   })
 })
 

@@ -7,7 +7,6 @@ import {
   APP_LOG_LEVELS,
   ARIA2_LOG_LEVELS,
   PROXY_SCOPE_OPTIONS,
-  UPDATE_CHANNELS,
 } from '@shared/constants'
 import { hydrateAppConfig } from '@shared/utils/configHydration'
 import { NUMERIC_CONFIG_CONSTRAINTS } from '@shared/configConstraints'
@@ -26,7 +25,6 @@ describe('hydrateAppConfig', () => {
   it('deep-hydrates fixed nested objects without overwriting saved subfields', () => {
     const result = hydrateAppConfig({
       proxy: { mode: 'manual', server: 'http://127.0.0.1:7890' } as AppConfig['proxy'],
-      clipboard: { http: false } as AppConfig['clipboard'],
     })
 
     expect(result.config.proxy).toEqual({
@@ -34,7 +32,6 @@ describe('hydrateAppConfig', () => {
       mode: 'manual',
       server: 'http://127.0.0.1:7890',
     })
-    expect(result.config.clipboard).toEqual({ ...DEFAULT_APP_CONFIG.clipboard, http: false })
   })
 
   it('preserves user-owned arrays including intentionally empty arrays', () => {
@@ -104,7 +101,6 @@ describe('hydrateAppConfig', () => {
       theme: 'neon' as AppConfig['theme'],
       taskCardMode: 'tiny' as AppConfig['taskCardMode'],
       colorScheme: 'missing-scheme',
-      updateChannel: 'nightly' as AppConfig['updateChannel'],
       logLevel: 'verbose' as AppConfig['logLevel'],
       aria2LogLevel: 'verbose' as AppConfig['aria2LogLevel'],
       fileAllocation: 'magic',
@@ -114,7 +110,6 @@ describe('hydrateAppConfig', () => {
     expect(result.config.theme).toBe(DEFAULT_APP_CONFIG.theme)
     expect(result.config.taskCardMode).toBe(DEFAULT_APP_CONFIG.taskCardMode)
     expect(result.config.colorScheme).toBe(DEFAULT_APP_CONFIG.colorScheme)
-    expect(result.config.updateChannel).toBe(DEFAULT_APP_CONFIG.updateChannel)
     expect(result.config.logLevel).toBe(DEFAULT_APP_CONFIG.logLevel)
     expect(result.config.aria2LogLevel).toBe(DEFAULT_APP_CONFIG.aria2LogLevel)
     expect(result.config.fileAllocation).toBe(DEFAULT_APP_CONFIG.fileAllocation)
@@ -124,7 +119,6 @@ describe('hydrateAppConfig', () => {
         'theme',
         'taskCardMode',
         'colorScheme',
-        'updateChannel',
         'logLevel',
         'aria2LogLevel',
         'fileAllocation',
@@ -186,11 +180,24 @@ describe('hydrateAppConfig', () => {
   })
 
   it('discards unknown preference keys', () => {
-    const result = hydrateAppConfig({
+    const persisted = {
       autoSyncTracker: true,
-    } as Partial<AppConfig> & { autoSyncTracker: boolean })
+      autoCheckUpdate: true,
+      autoCheckUpdateInterval: 24,
+      lastCheckUpdateTime: 1,
+      updateChannel: 'beta',
+      clipboard: { enable: true, background: true },
+      theme: 'dark' as const,
+    }
+    const result = hydrateAppConfig(persisted)
 
     expect(result.config).not.toHaveProperty('autoSyncTracker')
+    expect(result.config).not.toHaveProperty('autoCheckUpdate')
+    expect(result.config).not.toHaveProperty('autoCheckUpdateInterval')
+    expect(result.config).not.toHaveProperty('lastCheckUpdateTime')
+    expect(result.config).not.toHaveProperty('updateChannel')
+    expect(result.config).not.toHaveProperty('clipboard')
+    expect(result.config.theme).toBe('dark')
   })
 
   it('generates missing secrets and preserves intentionally cleared secrets', () => {
@@ -213,7 +220,6 @@ describe('hydrateAppConfig', () => {
     expect(['auto', 'light', 'dark']).toContain(DEFAULT_APP_CONFIG.theme)
     expect(['full', 'compact']).toContain(DEFAULT_APP_CONFIG.taskCardMode)
     expect(COLOR_SCHEMES.some((scheme) => scheme.id === DEFAULT_APP_CONFIG.colorScheme)).toBe(true)
-    expect(UPDATE_CHANNELS).toContain(DEFAULT_APP_CONFIG.updateChannel)
     expect(APP_LOG_LEVELS).toContain(DEFAULT_APP_CONFIG.logLevel)
     expect(ARIA2_LOG_LEVELS).toContain(DEFAULT_APP_CONFIG.aria2LogLevel)
     expect(['direct', 'manual', 'system']).toContain(DEFAULT_APP_CONFIG.proxy.mode)

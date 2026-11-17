@@ -14,10 +14,7 @@ import { logger } from '@shared/logger'
 const { t } = useI18n()
 const message = useAppMessage()
 const { status, busy, refreshAll } = useProtocolHandlers()
-const options = computed(() => [
-  { key: 'rayburst' as const, label: 'Rayburst [rayburst://]' },
-  { key: 'thunder' as const, label: t('preferences.protocol-thunder') },
-])
+const options = computed(() => [{ key: 'rayburst' as const, label: 'Rayburst [rayburst://]' }])
 const labels = computed(() => ({
   current: t('preferences.association-current'),
   other: t('preferences.association-other'),

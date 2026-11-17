@@ -12,8 +12,7 @@ use tauri::{AppHandle, Manager};
 
 /// Shared cancellation flag for the auto-shutdown safety-net timer.
 ///
-/// Follows the same `AtomicBool` pattern as `UpdateCancelState` in
-/// `commands/updater.rs`.  The monitor resets the flag when triggering
+/// The monitor resets the flag when triggering
 /// a new shutdown sequence; the frontend sets it via `cancel_shutdown`
 /// to skip only the current countdown without disabling the preference.
 pub struct ShutdownCancelState(AtomicBool);

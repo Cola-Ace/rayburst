@@ -197,12 +197,12 @@ export interface DownloadPreviewRequest {
   options: Aria2EngineOptions
 }
 
-/** The first HTTP request of each regular download in the form, with the options that shape it; the engine unwraps Thunder links. */
+/** The first HTTP request of each regular download in the form, with the options that shape it. */
 export function downloadPreviewRequests(form: AddTaskForm): DownloadPreviewRequest[] {
   const requestForm = { ...form, out: '', checksum: '', media: undefined }
   const base = buildEngineOptions(requestForm)
   return parseAria2Input(form.uris).entries.flatMap((entry) => {
-    const uri = entry.uris.find((value) => /^(?:https?|thunder):\/\//i.test(value))
+    const uri = entry.uris.find((value) => /^(?:https?):\/\//i.test(value))
     if (!uri) return []
     const options = manualEntryOptions(requestForm, entry, base)
     for (const key of Object.keys(options)) {

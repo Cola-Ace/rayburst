@@ -54,8 +54,6 @@ pub enum EngineOperationCause {
     FailureRetry,
     SessionRecovery,
     RuntimeCrash,
-    UpdateInstall,
-    UpdateInstallFailed,
     AppRelaunch,
     AppExit,
     UserCancelled,

@@ -16,9 +16,6 @@ function getExtension(pathname: string): string {
 }
 
 function summarizeRemoteUrl(value: string): string {
-  const lower = value.toLowerCase()
-  if (lower.startsWith('thunder://')) return `scheme=thunder length=${value.length}`
-
   try {
     const parsed = new URL(value)
     const scheme = parsed.protocol.replace(':', '') || 'unknown'

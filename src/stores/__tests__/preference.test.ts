@@ -92,13 +92,11 @@ describe('PreferenceStore', () => {
 
   it('loadPreference hydrates missing nested config fields', async () => {
     mockStoreData.set('preferences', {
-      clipboard: { enable: false },
       proxy: { mode: 'manual', server: 'http://127.0.0.1:7890' },
     })
 
     await store.loadPreference()
 
-    expect(store.config.clipboard).toEqual({ ...DEFAULT_APP_CONFIG.clipboard, enable: false })
     expect(store.config.proxy).toEqual({
       ...DEFAULT_APP_CONFIG.proxy,
       mode: 'manual',
@@ -109,16 +107,13 @@ describe('PreferenceStore', () => {
   it('loadPreference persists repaired invalid config once', async () => {
     mockStoreData.set('preferences', {
       theme: 'bad-theme',
-      updateChannel: 'nightly',
     })
 
     await store.loadPreference()
 
     const saved = mockStoreData.get('preferences') as AppConfig
     expect(store.config.theme).toBe(DEFAULT_APP_CONFIG.theme)
-    expect(store.config.updateChannel).toBe(DEFAULT_APP_CONFIG.updateChannel)
     expect(saved.theme).toBe(DEFAULT_APP_CONFIG.theme)
-    expect(saved.updateChannel).toBe(DEFAULT_APP_CONFIG.updateChannel)
   })
 
   // ─── computed: theme / locale / direction ───────────────

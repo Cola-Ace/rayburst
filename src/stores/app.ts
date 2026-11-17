@@ -19,7 +19,6 @@ import type {
   BrowserRequestHeader,
   ExternalDownloadContext,
   ExternalDownloadInput,
-  TauriUpdate,
   BatchItem,
 } from '@shared/types'
 import type { AddTaskForm } from '@/composables/useAddTaskSubmit'
@@ -63,8 +62,6 @@ export const useAppStore = defineStore('app', () => {
   /** Browser request headers captured by the extension for the most recent external input. */
   const pendingRequestHeaders = ref<BrowserRequestHeader[]>([])
   const progress = ref(0)
-  const pendingUpdate = ref<TauriUpdate | null>(null)
-  const updateCheckRequestId = ref(0)
   const externalInputSubmitting = ref(false)
   let externalInputSubmitCount = 0
   let externalInputErrorHandler: ((error: unknown) => void) | null = null
@@ -78,10 +75,6 @@ export const useAppStore = defineStore('app', () => {
     pendingFilename.value = ''
     pendingUserAgent.value = ''
     pendingRequestHeaders.value = []
-  }
-
-  function requestUpdateCheck() {
-    updateCheckRequestId.value += 1
   }
 
   function setPendingExternalMetadata(context: ExternalDownloadContext, filenameHint: string) {
@@ -201,7 +194,7 @@ export const useAppStore = defineStore('app', () => {
         continue
       }
 
-      if (/^(?:https?|ftp|sftp|thunder):\/\//i.test(url)) {
+      if (/^(?:https?|ftp|sftp):\/\//i.test(url)) {
         items.push(createBatchItem('uri', url))
       } else {
         result.ignored += 1
@@ -388,9 +381,6 @@ export const useAppStore = defineStore('app', () => {
     pendingUserAgent,
     pendingRequestHeaders,
     progress,
-    pendingUpdate,
-    updateCheckRequestId,
-    requestUpdateCheck,
     enqueueBatch,
     enqueueForwardedItems,
     showAddTaskDialog,

@@ -25,23 +25,6 @@ Application data is stored locally on your device and is not synced by Rayburst:
 
 Diagnostic log exports are created only when the user chooses **Advanced Settings → Export Diagnostic Logs**. The exported ZIP contains the Rayburst and Aria2 Next logs plus `diagnostics.json`, which combines system/runtime metadata with sanitized configuration. RPC secrets, Extension API secrets, cookies, and proxy credentials are redacted before export.
 
-## Automatic Network Connections
-
-Rayburst can make the following automatic network connections. They can be disabled in Settings.
-
-### 1. Update Check
-
-|                   |                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| **Default**       | Enabled, every application startup                                                                |
-| **Contacts**      | GitHub-hosted updater metadata and release assets                                                 |
-| **Purpose**       | Check if a newer version of Rayburst is available                                                 |
-| **Data sent**     | Standard HTTPS request metadata, including client IP as seen by GitHub                            |
-| **Data received** | Version metadata, release notes, signatures, and update package when the user downloads an update |
-| **Disable**       | Settings → General → uncheck "Check for updates automatically"                                    |
-
-Local and release builds use the configured update endpoint and public signing key. Update checks follow the selected Stable or Beta policy. Beta includes stable releases; neither policy offers a downgrade. If a proxy is configured for app updates, update checks use that proxy.
-
 ## User-Initiated Network Connections
 
 When you add a download task, Rayburst and its Aria2 Next sidecar connect to the servers needed for that task. This can include HTTP, HTTPS, FTP, or SFTP servers and media manifests, segments and key endpoints.
@@ -69,7 +52,6 @@ The static website uses local assets and stores language and theme preferences i
 | Component                                                               | Purpose                    | Network behavior                                                          |
 | ----------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------- |
 | [Aria2 Next](https://github.com/AnInsomniacy/aria2-next)                | Download engine            | Connects to download servers as directed by the user |
-| [Tauri Updater Plugin](https://github.com/tauri-apps/plugins-workspace) | Auto-update framework      | Used for update checks and update installation                            |
 
 ## Children's Privacy
 

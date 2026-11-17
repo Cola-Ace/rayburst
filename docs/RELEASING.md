@@ -5,6 +5,9 @@ website, change Git remotes or submit a signing request during development.
 
 ## Desktop updates
 
+Install new versions from GitHub Releases. The desktop has no update check,
+download or installation service.
+
 Keep the existing `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets. The matching public key
 is in `src-tauri/tauri.conf.json`; `src-tauri/tauri.release.json` enables signed
@@ -52,7 +55,7 @@ opens the containing application bundle, and Linux starts the sibling executable
 The host never launches a path supplied by an extension or searches for other
 installations. AppImage startup does not copy or register a persistent browser host.
 
-The desktop queries `thunder` and `rayburst` association status without changing
+The desktop queries `rayburst` association status without changing
 defaults. Installers and runtime do not register URL schemes, default-app candidates
 or Native Messaging hosts. Start Rayburst manually before connecting the extension.
 Native Messaging permissions remain activation-only for externally configured hosts.

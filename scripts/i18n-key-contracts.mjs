@@ -47,8 +47,6 @@ export const INDIRECT_I18N_KEYS = [
   'preferences.language-changed-title',
   'preferences.network',
   'preferences.proxy-scope-download',
-  'preferences.proxy-scope-update-app',
-  'preferences.restart-and-install',
   'preferences.site-rule-invalid',
   'task.batch-delete-task-partial',
   'task.delete-local-files-permanent-label',

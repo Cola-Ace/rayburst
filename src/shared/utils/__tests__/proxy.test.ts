@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { PROXY_SCOPES } from '@shared/constants'
 import {
   buildDownloadProxyOptions,
   buildTaskProxyOptions,
@@ -7,7 +6,6 @@ import {
   getDownloadProxy,
   normalizeProxyMode,
   proxySwitchValueToMode,
-  resolveAppProxyUrl,
 } from '@shared/utils/proxy'
 
 describe('proxyPolicy', () => {
@@ -22,15 +20,13 @@ describe('proxyPolicy', () => {
   })
 
   it('leaves the system proxy to the backend', () => {
-    const proxy = { mode: 'system' as const, server: 'http://stale:1', scope: ['download', 'update-app'] }
+    const proxy = { mode: 'system' as const, server: 'http://stale:1', scope: ['download'] }
     expect(normalizeProxyMode('system')).toBe('system')
     expect(buildDownloadProxyOptions(proxy)['all-proxy']).toBe('')
     expect(buildTaskProxyOptions('system', '', proxy)).toEqual({})
     expect(buildTaskProxyOptions('manual', '', proxy)['all-proxy']).toBe('')
     expect(getDefaultTaskProxyMode(proxy)).toBe('system')
     expect(getDownloadProxy(proxy)).toBe('system')
-    expect(resolveAppProxyUrl(proxy, PROXY_SCOPES.UPDATE_APP)).toBe('system')
-    expect(resolveAppProxyUrl(proxy, PROXY_SCOPES.DOWNLOAD)).toBe('system')
   })
 
   it('emits scoped HTTP download options', () => {
@@ -67,7 +63,7 @@ describe('proxyPolicy', () => {
       getDefaultTaskProxyMode({
         mode: 'manual',
         server: 'http://127.0.0.1:7890',
-        scope: ['update-app'],
+        scope: [],
       }),
     ).toBe('direct')
   })
@@ -80,22 +76,5 @@ describe('proxyPolicy', () => {
         scope: ['download'],
       }),
     ).toBe('manual')
-  })
-})
-
-describe('resolveAppProxyUrl', () => {
-  it('ignores stale proxy fields when mode is direct', () => {
-    expect(
-      resolveAppProxyUrl(
-        {
-          mode: 'direct',
-          server: 'Test123',
-          username: 'Test123',
-          password: 'Test1234',
-          scope: [PROXY_SCOPES.DOWNLOAD],
-        },
-        PROXY_SCOPES.DOWNLOAD,
-      ),
-    ).toBeNull()
   })
 })

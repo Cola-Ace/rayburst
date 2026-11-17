@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** @fileoverview Main application layout with application shell and IPC event handling. */
-import { computed, ref, nextTick, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { onMounted, onUnmounted } from 'vue'
@@ -34,7 +34,6 @@ import WindowControls from '@/components/layout/WindowControls.vue'
 import EngineRecoveryDialog from '@/components/layout/EngineRecoveryDialog.vue'
 import AboutPanel from '@/components/about/AboutPanel.vue'
 import ExtensionPanel from '@/components/extension/ExtensionPanel.vue'
-import UpdateDialog from '@/components/preference/UpdateDialog.vue'
 import TaskSelectionHost from '@/components/task/TaskSelectionHost.vue'
 import { useTaskStore } from '@/stores/task'
 import { usePreferenceStore } from '@/stores/preference'
@@ -129,8 +128,6 @@ const showShutdownCountdown = ref(false)
 const shutdownCountdown = ref(60)
 let shutdownTimer: ReturnType<typeof setInterval> | null = null
 let unlistenPowerCountdown: (() => void) | null = null
-
-const updateDialogRef = ref<InstanceType<typeof UpdateDialog> | null>(null)
 
 let unlistenMenuEvent: (() => void) | null = null
 let unlistenCloseRequested: (() => void) | null = null
@@ -289,25 +286,6 @@ async function onMaximizeToggled() {
     isMaximized.value = await appWindow.isMaximized()
   }, 300)
 }
-
-watch(
-  () => appStore.pendingUpdate,
-  (update) => {
-    if (update) {
-      nextTick(() => updateDialogRef.value?.present(update))
-      appStore.pendingUpdate = null
-    }
-  },
-)
-
-watch(
-  () => appStore.updateCheckRequestId,
-  (requestId) => {
-    if (requestId > 0) {
-      nextTick(() => updateDialogRef.value?.open())
-    }
-  },
-)
 
 /** Saves the button the user chose as what closing does from now on. */
 async function rememberCloseAction(action: 'tray' | 'quit') {
@@ -800,7 +778,6 @@ onUnmounted(() => {
     </footer>
     <AboutPanel :show="showAbout" @close="showAbout = false" />
     <ExtensionPanel :show="showExtensions" @close="showExtensions = false" />
-    <UpdateDialog ref="updateDialogRef" />
     <EngineRecoveryDialog />
     <TaskSelectionHost
       :blocked="

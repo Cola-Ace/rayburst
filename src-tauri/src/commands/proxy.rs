@@ -77,17 +77,6 @@ pub fn current() -> Option<SystemProxyInfo> {
     }
 }
 
-/// Stands for the system's proxy where a request names its proxy.
-pub const SYSTEM: &str = "system";
-
-/// The proxy server for a request that names `proxy`, resolving [`SYSTEM`].
-pub fn resolve(proxy: Option<String>) -> Option<String> {
-    if proxy.as_deref().map(str::trim) == Some(SYSTEM) {
-        return current().map(|proxy| proxy.server);
-    }
-    proxy
-}
-
 // ── Platform implementations ────────────────────────────────────────
 
 #[cfg(target_os = "windows")]

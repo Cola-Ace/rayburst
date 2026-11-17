@@ -5,7 +5,7 @@ use gio::{glib, prelude::*, AppInfo};
 use std::path::{Path, PathBuf};
 
 pub const DESKTOP_ID: &str = "Rayburst.desktop";
-pub const PROTOCOLS: [&str; 2] = ["thunder", "rayburst"];
+pub const PROTOCOLS: [&str; 1] = ["rayburst"];
 
 fn failure(context: &str, error: impl std::fmt::Display) -> AppError {
     AppError::Protocol(format!("{context}: {error}"))

@@ -28,7 +28,7 @@ function makeTask(overrides: Partial<Aria2Task> = {}): Aria2Task {
 }
 
 describe('buildTaskDetailKind', () => {
-  it('classifies HTTP, SFTP, Thunder-decoded, and other URI tasks as uri when no protocol metadata exists', () => {
+  it('classifies HTTP, SFTP, and other URI tasks as uri when no protocol metadata exists', () => {
     expect(buildTaskDetailKind(makeTask())).toBe('uri')
   })
 })
